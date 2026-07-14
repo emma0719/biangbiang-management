@@ -1,0 +1,182 @@
+CREATE TABLE vendors (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  location_code VARCHAR(32) NOT NULL,
+  name VARCHAR(190) NOT NULL,
+  normalized_name VARCHAR(190) NOT NULL,
+  vendor_code VARCHAR(64) NULL,
+  contact_name VARCHAR(120) NULL,
+  phone VARCHAR(32) NULL,
+  email VARCHAR(190) NULL,
+  ordering_method VARCHAR(120) NULL,
+  order_deadline TIME NULL,
+  notes TEXT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  display_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP(6) NOT NULL,
+  updated_at TIMESTAMP(6) NOT NULL,
+  UNIQUE KEY uk_vendors_location_normalized_name (location_code, normalized_name),
+  KEY ix_vendors_location (location_code),
+  KEY ix_vendors_active (active)
+);
+
+CREATE TABLE vendor_delivery_days (
+  vendor_id BIGINT NOT NULL,
+  day_of_week VARCHAR(16) NOT NULL,
+  PRIMARY KEY (vendor_id, day_of_week),
+  CONSTRAINT fk_vendor_delivery_days_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id)
+);
+
+CREATE TABLE order_catalog_products (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  location_code VARCHAR(32) NOT NULL,
+  vendor_id BIGINT NOT NULL,
+  vendor_product_code VARCHAR(64) NULL,
+  name VARCHAR(190) NOT NULL,
+  normalized_name VARCHAR(190) NOT NULL,
+  chinese_display_name VARCHAR(190) NULL,
+  category VARCHAR(64) NOT NULL,
+  storage_area VARCHAR(120) NULL,
+  inventory_unit VARCHAR(32) NOT NULL,
+  inventory_unit_label VARCHAR(80) NULL,
+  order_unit VARCHAR(32) NOT NULL,
+  order_unit_label VARCHAR(80) NULL,
+  package_specification VARCHAR(190) NULL,
+  unit_price DECIMAL(12,2) NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+  par_level DECIMAL(12,3) NULL,
+  reorder_point DECIMAL(12,3) NULL,
+  default_order_quantity DECIMAL(12,3) NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  display_order INT NOT NULL DEFAULT 0,
+  notes TEXT NULL,
+  created_at TIMESTAMP(6) NOT NULL,
+  updated_at TIMESTAMP(6) NOT NULL,
+  UNIQUE KEY uk_products_location_vendor_name (location_code, vendor_id, normalized_name),
+  KEY ix_products_vendor (vendor_id),
+  KEY ix_products_location_name (location_code, normalized_name),
+  KEY ix_products_category (category),
+  KEY ix_products_active (active),
+  CONSTRAINT fk_order_catalog_products_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id)
+);
+
+CREATE TABLE inventory_count_sessions (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  location_code VARCHAR(32) NOT NULL,
+  business_date DATE NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_by_employee_id BIGINT NOT NULL,
+  completed_by_employee_id BIGINT NULL,
+  completed_at TIMESTAMP(6) NULL,
+  notes TEXT NULL,
+  created_at TIMESTAMP(6) NOT NULL,
+  updated_at TIMESTAMP(6) NOT NULL,
+  KEY ix_inventory_sessions_location_date (location_code, business_date),
+  KEY ix_inventory_sessions_status (status),
+  CONSTRAINT fk_inventory_sessions_created_by FOREIGN KEY (created_by_employee_id) REFERENCES employees(id),
+  CONSTRAINT fk_inventory_sessions_completed_by FOREIGN KEY (completed_by_employee_id) REFERENCES employees(id)
+);
+
+CREATE TABLE inventory_count_lines (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  session_id BIGINT NOT NULL,
+  product_id BIGINT NOT NULL,
+  quantity_on_hand DECIMAL(12,3) NOT NULL,
+  unit VARCHAR(32) NOT NULL,
+  notes TEXT NULL,
+  updated_by_employee_id BIGINT NOT NULL,
+  updated_at TIMESTAMP(6) NOT NULL,
+  UNIQUE KEY uk_inventory_lines_session_product (session_id, product_id),
+  KEY ix_inventory_lines_product (product_id),
+  CONSTRAINT fk_inventory_lines_session FOREIGN KEY (session_id) REFERENCES inventory_count_sessions(id),
+  CONSTRAINT fk_inventory_lines_product FOREIGN KEY (product_id) REFERENCES order_catalog_products(id),
+  CONSTRAINT fk_inventory_lines_updated_by FOREIGN KEY (updated_by_employee_id) REFERENCES employees(id)
+);
+
+CREATE TABLE purchase_orders (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  location_code VARCHAR(32) NOT NULL,
+  vendor_id BIGINT NOT NULL,
+  order_number VARCHAR(64) NOT NULL,
+  business_date DATE NOT NULL,
+  expected_delivery_date DATE NULL,
+  status VARCHAR(32) NOT NULL,
+  subtotal DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  tax DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  fees DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+  created_by_employee_id BIGINT NOT NULL,
+  submitted_by_employee_id BIGINT NULL,
+  approved_by_employee_id BIGINT NULL,
+  ordered_by_employee_id BIGINT NULL,
+  received_by_employee_id BIGINT NULL,
+  rejection_reason TEXT NULL,
+  vendor_confirmation_number VARCHAR(120) NULL,
+  external_order_notes TEXT NULL,
+  created_at TIMESTAMP(6) NOT NULL,
+  updated_at TIMESTAMP(6) NOT NULL,
+  submitted_at TIMESTAMP(6) NULL,
+  approved_at TIMESTAMP(6) NULL,
+  ordered_at TIMESTAMP(6) NULL,
+  received_at TIMESTAMP(6) NULL,
+  UNIQUE KEY uk_purchase_orders_order_number (order_number),
+  KEY ix_purchase_orders_location_date (location_code, business_date),
+  KEY ix_purchase_orders_status (status),
+  KEY ix_purchase_orders_vendor (vendor_id),
+  CONSTRAINT fk_purchase_orders_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id),
+  CONSTRAINT fk_purchase_orders_created_by FOREIGN KEY (created_by_employee_id) REFERENCES employees(id),
+  CONSTRAINT fk_purchase_orders_submitted_by FOREIGN KEY (submitted_by_employee_id) REFERENCES employees(id),
+  CONSTRAINT fk_purchase_orders_approved_by FOREIGN KEY (approved_by_employee_id) REFERENCES employees(id),
+  CONSTRAINT fk_purchase_orders_ordered_by FOREIGN KEY (ordered_by_employee_id) REFERENCES employees(id),
+  CONSTRAINT fk_purchase_orders_received_by FOREIGN KEY (received_by_employee_id) REFERENCES employees(id)
+);
+
+CREATE TABLE purchase_order_lines (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  purchase_order_id BIGINT NOT NULL,
+  product_id BIGINT NOT NULL,
+  product_name_snapshot VARCHAR(190) NOT NULL,
+  product_code_snapshot VARCHAR(64) NULL,
+  package_specification_snapshot VARCHAR(190) NULL,
+  order_unit_snapshot VARCHAR(32) NOT NULL,
+  unit_price_snapshot DECIMAL(12,2) NOT NULL,
+  current_inventory_quantity DECIMAL(12,3) NULL,
+  requested_quantity DECIMAL(12,3) NOT NULL,
+  approved_quantity DECIMAL(12,3) NULL,
+  received_quantity DECIMAL(12,3) NOT NULL DEFAULT 0.000,
+  line_total DECIMAL(12,2) NOT NULL,
+  notes TEXT NULL,
+  UNIQUE KEY uk_purchase_order_lines_order_product (purchase_order_id, product_id),
+  KEY ix_purchase_order_lines_product (product_id),
+  CONSTRAINT fk_purchase_order_lines_order FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id),
+  CONSTRAINT fk_purchase_order_lines_product FOREIGN KEY (product_id) REFERENCES order_catalog_products(id)
+);
+
+CREATE TABLE product_price_history (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  product_id BIGINT NOT NULL,
+  unit_price DECIMAL(12,2) NOT NULL,
+  effective_date DATE NOT NULL,
+  purchase_order_id BIGINT NULL,
+  entered_by_employee_id BIGINT NOT NULL,
+  created_at TIMESTAMP(6) NOT NULL,
+  KEY ix_product_price_history_product (product_id, effective_date),
+  CONSTRAINT fk_product_price_history_product FOREIGN KEY (product_id) REFERENCES order_catalog_products(id),
+  CONSTRAINT fk_product_price_history_order FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id),
+  CONSTRAINT fk_product_price_history_employee FOREIGN KEY (entered_by_employee_id) REFERENCES employees(id)
+);
+
+CREATE TABLE order_audit_events (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  entity_type VARCHAR(64) NOT NULL,
+  entity_id BIGINT NOT NULL,
+  action VARCHAR(64) NOT NULL,
+  actor_employee_id BIGINT NOT NULL,
+  old_value TEXT NULL,
+  new_value TEXT NULL,
+  reason TEXT NULL,
+  created_at TIMESTAMP(6) NOT NULL,
+  KEY ix_order_audit_entity (entity_type, entity_id),
+  KEY ix_order_audit_actor (actor_employee_id),
+  CONSTRAINT fk_order_audit_actor FOREIGN KEY (actor_employee_id) REFERENCES employees(id)
+);

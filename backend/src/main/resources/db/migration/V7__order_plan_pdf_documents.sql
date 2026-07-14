@@ -1,0 +1,20 @@
+CREATE TABLE order_plan_pdf_documents (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_plan_id BIGINT NOT NULL,
+  version_number INT NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  mime_type VARCHAR(120) NOT NULL,
+  generated_at TIMESTAMP(6) NOT NULL,
+  generated_by_employee_id BIGINT NOT NULL,
+  generated_by_name_snapshot VARCHAR(190) NOT NULL,
+  byte_size BIGINT NOT NULL,
+  checksum_sha256 VARCHAR(64) NOT NULL,
+  content LONGBLOB NOT NULL,
+  current_version BOOLEAN NOT NULL DEFAULT TRUE,
+  superseded_at TIMESTAMP(6) NULL,
+  UNIQUE KEY uk_order_plan_pdf_version (order_plan_id, version_number),
+  KEY ix_order_plan_pdf_plan_current (order_plan_id, current_version),
+  KEY ix_order_plan_pdf_generated_by (generated_by_employee_id),
+  CONSTRAINT fk_order_plan_pdf_plan FOREIGN KEY (order_plan_id) REFERENCES order_plan_sessions(id),
+  CONSTRAINT fk_order_plan_pdf_generated_by FOREIGN KEY (generated_by_employee_id) REFERENCES employees(id)
+);

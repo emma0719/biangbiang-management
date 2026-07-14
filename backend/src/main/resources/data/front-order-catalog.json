@@ -1,0 +1,259 @@
+{
+  "source": "docs/reference/Front Order List 前台订货.pdf",
+  "sourceVersion": "front-order-list-2026-06-20-pdf-4-pages",
+  "sourceStatus": "Reconciled from the four-page PDF present in docs/reference on 2026-06-20. Only visible vendor names, product names, codes, package specifications, units, prices, order quantities, totals, and delivery labels were imported.",
+  "locationCode": "SEATTLE",
+  "vendors": [
+    {
+      "sourceKey": "p1-wellpack",
+      "name": "Wellpack",
+      "deliveryDays": ["WEDNESDAY"],
+      "notes": "PDF page 1 vendor block labelled Wellpack (Wed.).",
+      "products": [
+        {"sourceKey": "p1-wellpack-l32b-black-dry-mix", "code": "L32B", "name": "Black (Dry mix)", "category": "PACKAGING", "notes": "PDF page 1 Wellpack row 1."},
+        {"sourceKey": "p1-wellpack-box8-white-wings", "code": "Box #8", "name": "White (Wings)", "category": "PACKAGING", "notes": "PDF page 1 Wellpack row 1."},
+        {"sourceKey": "p1-wellpack-s16p240-round-16oz-soup", "code": "S16P240", "name": "Round 16oz (Soup)", "category": "PACKAGING", "packageSpecification": "16oz", "notes": "PDF page 1 Wellpack row 1."},
+        {"sourceKey": "p1-wellpack-milk-tea-cup-iced", "name": "Milk tea Cup (Iced)", "category": "TEA_AND_MILK_TEA", "notes": "PDF page 1 Wellpack row 1."},
+        {"sourceKey": "p1-wellpack-box1-white-bao", "code": "Box #1", "name": "White (Bao)", "category": "PACKAGING", "notes": "PDF page 1 Wellpack row 2."},
+        {"sourceKey": "p1-wellpack-np14162-napkin-2-ply", "code": "NP14162", "name": "Napkin 2 ply", "category": "DISPOSABLES", "notes": "PDF page 1 Wellpack row 2."},
+        {"sourceKey": "p1-wellpack-nb38-black-soup-noodle", "code": "NB-38", "name": "Black (Soup noodle)", "category": "PACKAGING", "notes": "PDF page 1 Wellpack row 2."},
+        {"sourceKey": "p1-wellpack-milk-tea-lid-iced", "name": "Milk tea Lid (Iced)", "category": "TEA_AND_MILK_TEA", "notes": "PDF page 1 Wellpack row 2."},
+        {"sourceKey": "p1-wellpack-bamboo-chopstick-8", "name": "Bamboo chopstick, 8 inch", "legacyNames": ["Bamboo chopstick, 8\""], "category": "DISPOSABLES", "packageSpecification": "8 inch", "notes": "PDF page 1 displays Bamboo chopstick, 8\"."},
+        {"sourceKey": "p1-wellpack-fork-black", "code": "FORK", "name": "black", "category": "DISPOSABLES", "notes": "PDF page 1 displays FORK, black."},
+        {"sourceKey": "p1-wellpack-tshirt-compostable-bag", "name": "T-Shirt compostable bag", "category": "DISPOSABLES", "notes": "PDF page 1 Wellpack row 3."},
+        {"sourceKey": "p1-wellpack-paper-cup-16oz-hot", "name": "Paper Cup 16oz (Hot)", "category": "DISPOSABLES", "packageSpecification": "16oz", "notes": "PDF page 1 Wellpack row 3."},
+        {"sourceKey": "p1-wellpack-spoon-black", "code": "SPOON", "name": "black", "category": "DISPOSABLES", "notes": "PDF page 1 displays SPOON, black."},
+        {"sourceKey": "p1-wellpack-straw-black", "name": "Straw (Black)", "category": "DISPOSABLES", "notes": "PDF page 1 Wellpack row 4."},
+        {"sourceKey": "p1-wellpack-wftw4000-hand-tissue", "code": "WFTW4000", "name": "Hand tissue", "category": "RESTROOM_SUPPLIES", "notes": "PDF page 1 Wellpack row 4."},
+        {"sourceKey": "p1-wellpack-paper-cup-lid-hot", "name": "Paper Cup Lid (Hot)", "category": "DISPOSABLES", "notes": "PDF page 1 Wellpack row 4."},
+        {"sourceKey": "p1-wellpack-s8p240-round-8oz-rice", "code": "S8P240", "name": "Round 8oz (Rice)", "category": "PACKAGING", "packageSpecification": "8oz", "notes": "PDF page 1 Wellpack row 5."}
+      ]
+    },
+    {
+      "sourceKey": "p1-p3-jfc",
+      "name": "JFC",
+      "deliveryDays": ["WEDNESDAY"],
+      "notes": "PDF page 1 labels JFC (Wed); page 3 also lists JFC.",
+      "products": [
+        {"sourceKey": "p1-p2-jfc-sapporo-beer", "name": "Sapporo Beer", "category": "BEER", "inventoryUnit": "CAN", "inventoryUnitLabel": "can", "orderUnit": "CAN", "orderUnitLabel": "can", "notes": "PDF pages 1 and 2. Page 2 inventory unit is can."},
+        {"sourceKey": "p3-jfc-matcha-powder", "name": "Matcha Powder", "category": "TEA_AND_MILK_TEA", "notes": "PDF page 3 JFC row."}
+      ]
+    },
+    {
+      "sourceKey": "p1-p3-coho",
+      "name": "CO-HO",
+      "notes": "PDF pages 1-2 display CO-HO; page 3 displays Coho. Kept one canonical vendor.",
+      "products": [
+        {"sourceKey": "p1-coho-sho-chiku-bai-1l-case", "name": "Sho Chiku Bai 1L", "category": "SAKE", "orderUnit": "CASE", "orderUnitLabel": "case", "packageSpecification": "1L case", "notes": "PDF page 1 displays Sho Chiku Bai 1L(case)."},
+        {"sourceKey": "p2-coho-sho-chiku-bai-1-5l-bt", "name": "Sho Chiku Bai 1.5L", "category": "SAKE", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "packageSpecification": "1.5L", "notes": "PDF page 2 inventory row. Kept separate from page 1 1L case row."},
+        {"sourceKey": "p1-p2-coho-jinro-original", "name": "JINRO SOJU Original", "category": "SOJU", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1 and 2."},
+        {"sourceKey": "p1-p2-coho-jinro-greengrape", "name": "JINRO SOJU Greengrape", "category": "SOJU", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1 and 2."},
+        {"sourceKey": "p1-p2-coho-jinro-strawberry", "name": "JINRO SOJU Strawberry", "category": "SOJU", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1 and 2."},
+        {"sourceKey": "p1-p2-coho-jinro-peach", "name": "JINRO SOJU Peach", "category": "SOJU", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1 and 2."},
+        {"sourceKey": "p1-p2-coho-taiwan-gold-medal-beer", "name": "Taiwan Gold Medal Beer", "category": "BEER", "inventoryUnit": "CAN", "inventoryUnitLabel": "can", "orderUnit": "CASE", "orderUnitLabel": "case", "notes": "PDF page 1 order unit displays case; page 2 inventory unit displays can."},
+        {"sourceKey": "p1-p2-coho-taiwan-lychee-beer", "name": "Taiwan Lychee Beer", "category": "BEER", "inventoryUnit": "CAN", "inventoryUnitLabel": "can", "orderUnit": "CASE", "orderUnitLabel": "case", "notes": "PDF page 1 order unit displays case; page 2 inventory unit displays can."},
+        {"sourceKey": "p3-coho-fen-chiew", "name": "Fen Chiew", "category": "SPIRITS", "notes": "PDF page 3 Coho row."},
+        {"sourceKey": "p3-coho-fen-chiew-20-years", "name": "Fen Chiew 20 years", "category": "SPIRITS", "notes": "PDF page 3 Coho row."},
+        {"sourceKey": "p3-coho-kinmen-kaoliang-58", "name": "Kinmen Kaoliang 58", "category": "SPIRITS", "notes": "PDF page 3 Coho row."},
+        {"sourceKey": "p3-coho-kinmen-kaoliang-38", "name": "Kinmen Kaoliang 38", "category": "SPIRITS", "notes": "PDF page 3 Coho row."},
+        {"sourceKey": "p3-coho-wu-liang-ye", "name": "Wu Liang Ye", "category": "SPIRITS", "notes": "PDF page 3 Coho row."},
+        {"sourceKey": "p3-coho-maotai", "name": "Maotai", "category": "SPIRITS", "notes": "PDF page 3 Coho row."},
+        {"sourceKey": "p3-coho-hong-hua-lang", "name": "Hong Hua Lang", "category": "SPIRITS", "notes": "PDF page 3 Coho row."},
+        {"sourceKey": "p3-coho-shui-jing-fang", "name": "Shui Jing Fang", "category": "SPIRITS", "notes": "PDF page 3 Coho row."}
+      ]
+    },
+    {
+      "sourceKey": "p1-p3-southern-glazers",
+      "name": "Southern Glazer's",
+      "deliveryDays": ["WEDNESDAY"],
+      "notes": "PDF page 1 displays Southern Glazer's (Wed.); page 2 displays Southern Glazer; page 3 uses SG. Kept one canonical vendor.",
+      "products": [
+        {"sourceKey": "p1-p2-sg-volka-smiroff", "name": "Volka Smiroff", "legacyNames": ["Smirnoff Vodka"], "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF spelling is Volka Smiroff on pages 1-2."},
+        {"sourceKey": "p1-p2-sg-whiskey-evan-williams", "name": "Whiskey Evan Williams", "legacyNames": ["Evan Williams Whiskey"], "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1-2."},
+        {"sourceKey": "p1-p2-sg-yuzu-sparkling-sake", "name": "Yuzu Sparkling Sake", "category": "SAKE", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "CASE", "orderUnitLabel": "case", "notes": "PDF page 1 order unit displays case; page 2 inventory unit displays bt."},
+        {"sourceKey": "p1-p2-sg-tequila-sauza", "name": "Tequila Sauza", "legacyNames": ["Sauza Tequila"], "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1-2."},
+        {"sourceKey": "p1-p2-sg-gin-beefeater", "name": "Gin Beefeater", "legacyNames": ["Beefeater Gin"], "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1-2."},
+        {"sourceKey": "p1-p2-sg-rum-barcadi", "name": "Rum Barcadi", "legacyNames": ["Bacardi Rum"], "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF spelling is Rum Barcadi on pages 1-2."},
+        {"sourceKey": "p1-p2-sg-ming-river", "name": "Ming River", "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1-2 Southern Glazer row; CD also has a separate Ming River entry on page 3."},
+        {"sourceKey": "p1-p2-sg-captain-rum", "name": "Captain Rum", "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1-2."},
+        {"sourceKey": "p1-p2-sg-vodka-titos", "name": "Vodka Tito's", "legacyNames": ["Tito's Vodka"], "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF pages 1-2."},
+        {"sourceKey": "p1-sg-jameson-irish-whiskey", "name": "JAMESON IRISH WHISKEY", "legacyNames": ["Jameson Irish Whiskey"], "category": "SPIRITS", "notes": "PDF page 1 only."},
+        {"sourceKey": "p2-sg-malibu-rum-coconut", "name": "Malibu Rum Coconut", "category": "SPIRITS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF page 2 inventory row."},
+        {"sourceKey": "p2-sg-cucumber-mint", "name": "Cucumber Mint", "category": "COCKTAIL_INGREDIENTS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF page 2 inventory row."},
+        {"sourceKey": "p3-sg-rye-whiskey", "name": "Rye Whiskey", "category": "SPIRITS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-kavalan-select", "name": "Kavalan Select", "category": "SPIRITS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-toki-whiskey", "name": "Toki Whiskey", "category": "SPIRITS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-roku-gin", "name": "Roku Gin", "category": "SPIRITS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-elder-flower", "name": "Elder Flower", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-amaro-nonino", "name": "Amaro Nonino", "category": "SPIRITS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-tequila-el-tequilano", "name": "Tequila El Tequilano", "legacyNames": ["El Tequilano Tequila"], "category": "SPIRITS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-campari", "name": "Campari", "category": "SPIRITS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-orange-bitter", "name": "Orange Bitter", "legacyNames": ["Orange Bitters"], "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 3 SG row."},
+        {"sourceKey": "p3-sg-angostura-bitter", "name": "Angostura Bitter", "legacyNames": ["Angostura Bitters"], "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 3 SG row."}
+      ]
+    },
+    {
+      "sourceKey": "p1-p2-costco",
+      "name": "Costco",
+      "notes": "PDF page 1 order row combines Coke / Diet Coke; page 2 inventory separates Coke and Diet Coke.",
+      "products": [
+        {"sourceKey": "p1-p2-costco-coke", "name": "Coke", "category": "NON_ALCOHOLIC_BEVERAGES", "inventoryUnit": "CAN", "inventoryUnitLabel": "can", "orderUnit": "CAN", "orderUnitLabel": "can", "notes": "PDF page 2 inventory row; page 1 combined Coke / Diet Coke order cell."},
+        {"sourceKey": "p1-p2-costco-diet-coke", "name": "Diet Coke", "category": "NON_ALCOHOLIC_BEVERAGES", "inventoryUnit": "CAN", "inventoryUnitLabel": "can", "orderUnit": "CAN", "orderUnitLabel": "can", "notes": "PDF page 2 inventory row; page 1 combined Coke / Diet Coke order cell."},
+        {"sourceKey": "p1-p2-costco-sprite", "name": "Sprite", "category": "NON_ALCOHOLIC_BEVERAGES", "inventoryUnit": "CAN", "inventoryUnitLabel": "can", "orderUnit": "CAN", "orderUnitLabel": "can", "notes": "PDF pages 1 and 2."},
+        {"sourceKey": "p1-costco-perrier-sparkling-water", "name": "PERRIER Sparkling Water", "legacyNames": ["Perrier Sparkling Water"], "category": "NON_ALCOHOLIC_BEVERAGES", "notes": "PDF page 1 capitalization preserved."},
+        {"sourceKey": "p1-costco-ginger-beer", "name": "Ginger Beer", "category": "NON_ALCOHOLIC_BEVERAGES", "notes": "PDF page 1."}
+      ]
+    },
+    {
+      "sourceKey": "p1-gic",
+      "name": "GIC",
+      "products": [
+        {"sourceKey": "p1-gic-lychee-fruit-can", "name": "Lychee Fruit Can", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 GIC row."},
+        {"sourceKey": "p1-gic-coconut-milk-can", "name": "Coconut Milk Can", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 GIC row."},
+        {"sourceKey": "p1-gic-thai-tea", "name": "Thai Tea", "category": "TEA_AND_MILK_TEA", "notes": "PDF page 1 GIC row."}
+      ]
+    },
+    {
+      "sourceKey": "p1-sysco",
+      "name": "Sysco",
+      "products": [
+        {"sourceKey": "p1-sysco-mint-leaf", "name": "Mint Leaf", "category": "PRODUCE", "notes": "PDF page 1 Sysco row."},
+        {"sourceKey": "p1-sysco-glove-black-sml", "name": "Glove Black (S/M/L)", "legacyNames": ["Black Gloves"], "category": "DISPOSABLES", "notes": "PDF page 1 explicitly shows Glove Black (S/M/L); individual size rows are not shown."},
+        {"sourceKey": "p1-sysco-lemon-fruit-ct", "name": "Lemon Fruit (ct)", "legacyNames": ["Lemon Fruit"], "category": "PRODUCE", "notes": "PDF page 1 Sysco row."},
+        {"sourceKey": "p1-sysco-evaporated-milk", "name": "Evaporated Milk", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 Sysco row."},
+        {"sourceKey": "p1-sysco-square-ice", "name": "SQUARE ICE", "legacyNames": ["Square Ice"], "category": "OTHER", "notes": "PDF page 1 capitalization preserved."},
+        {"sourceKey": "p1-sysco-grenadine", "name": "Grenadine", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 Sysco row."},
+        {"sourceKey": "p1-sysco-almond-syrup", "name": "Almond Syrup", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 Sysco row."},
+        {"sourceKey": "p1-sysco-lime-juice-bt", "name": "Lime Juice", "category": "COCKTAIL_INGREDIENTS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF page 1 displays Lime Juice (bt)."},
+        {"sourceKey": "p1-sysco-lemon-juice-bt", "name": "Lemon Juice", "category": "COCKTAIL_INGREDIENTS", "inventoryUnit": "BOTTLE", "inventoryUnitLabel": "bt", "orderUnit": "BOTTLE", "orderUnitLabel": "bt", "notes": "PDF page 1 displays Lemon Juice (bt)."}
+      ]
+    },
+    {
+      "sourceKey": "p1-no-delivery",
+      "name": "No Delivery",
+      "legacyNames": ["No Delivery / Local Purchase"],
+      "notes": "PDF page 1 vendor block labelled No Delivery.",
+      "products": [
+        {"sourceKey": "p1-no-delivery-mango-puree-can", "name": "Mango Puree Can", "legacyNames": ["Mango Puree"], "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-cocktail-cherry", "name": "Cocktail Cherry", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-pineapple-juice", "name": "Pineapple Juice", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-tonic-water", "name": "Tonic Water", "category": "NON_ALCOHOLIC_BEVERAGES", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-pos-thermal-paper", "name": "POS Thermal Paper", "category": "OFFICE_AND_POS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-clorox-lysol-wipes", "name": "Clorox/ Lysol Wipes", "legacyNames": ["Clorox/Lysol Wipes"], "category": "CLEANING", "notes": "PDF page 1 includes space after slash."},
+        {"sourceKey": "p1-no-delivery-toilet-paper", "name": "Toilet Paper", "category": "RESTROOM_SUPPLIES", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-toilet-seat-cover", "name": "Toilet Seat Cover", "category": "RESTROOM_SUPPLIES", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-bamboo-skewers", "name": "BAMBOO Skewers", "legacyNames": ["Bamboo Skewers"], "category": "DISPOSABLES", "notes": "PDF page 1 capitalization preserved."},
+        {"sourceKey": "p1-no-delivery-straw-5-25-cocktails", "name": "Straw 5.25 inch (Cocktails)", "legacyNames": ["Cocktail Straw 5.25 inch"], "category": "DISPOSABLES", "packageSpecification": "5.25 inch", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-mask", "name": "Mask", "legacyNames": ["Masks"], "category": "DISPOSABLES", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-simple-green", "name": "Simple Green", "category": "CLEANING", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-hand-soap", "name": "Hand Soap", "category": "RESTROOM_SUPPLIES", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-tape", "name": "Tape", "category": "OFFICE_AND_POS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-markers", "name": "Markers", "category": "OFFICE_AND_POS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-milk-tea-creama", "name": "Milk tea Creama", "legacyNames": ["Milk Tea Creamer"], "category": "TEA_AND_MILK_TEA", "notes": "PDF page 1 displays Milk tea Creama."},
+        {"sourceKey": "p1-no-delivery-green-tea-leaf", "name": "Green Tea Leaf", "category": "TEA_AND_MILK_TEA", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-black-tea-leaf-milk-tea", "name": "Black Tea Leaf (Milk tea)", "legacyNames": ["Black Tea Leaf"], "category": "TEA_AND_MILK_TEA", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-oolong-tea-leaf-hot-tea", "name": "Oolong Tea Leaf (Hot tea)", "legacyNames": ["Oolong Tea Leaf"], "category": "TEA_AND_MILK_TEA", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-topochico", "name": "Topochico", "legacyNames": ["Topo Chico"], "category": "NON_ALCOHOLIC_BEVERAGES", "notes": "PDF page 1 displays Topochico."},
+        {"sourceKey": "p1-no-delivery-lychee-syrup", "name": "Lychee Syrup", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-passion-fruit-syrup", "name": "Passion Fruit Syrup", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-triple-sec", "name": "Triple Sec", "category": "SPIRITS", "notes": "PDF page 1 No Delivery row."},
+        {"sourceKey": "p1-no-delivery-monin-rose-syrup", "name": "Monin Rose Syrup", "category": "COCKTAIL_INGREDIENTS", "notes": "PDF page 1 No Delivery row."}
+      ]
+    },
+    {
+      "sourceKey": "p3-erndc",
+      "name": "ERNDC",
+      "products": [
+        {"sourceKey": "p3-erndc-hendricks-gin", "name": "Hendrick's Gin", "category": "SPIRITS", "notes": "PDF page 3 ERNDC row."},
+        {"sourceKey": "p3-erndc-fernet-branca", "name": "Fernet Branca", "category": "SPIRITS", "notes": "PDF page 3 ERNDC row."}
+      ]
+    },
+    {
+      "sourceKey": "p3-aws",
+      "name": "AWS",
+      "products": [
+        {"sourceKey": "p3-aws-song-cai-gin", "name": "Song Cai Gin", "category": "SPIRITS", "notes": "PDF page 3 AWS row."},
+        {"sourceKey": "p3-aws-green-tea-vodka", "name": "Green Tea Vodka", "category": "SPIRITS", "notes": "PDF page 3 AWS row."}
+      ]
+    },
+    {
+      "sourceKey": "p3-cd",
+      "name": "CD",
+      "products": [
+        {"sourceKey": "p3-cd-ming-river", "name": "Ming River", "category": "SPIRITS", "notes": "PDF page 3 CD row. Separate from Southern Glazer's Ming River row on pages 1-2."}
+      ]
+    },
+    {
+      "sourceKey": "p3-highside",
+      "name": "Highside",
+      "products": [
+        {"sourceKey": "p3-highside-highside-gin", "name": "Highside Gin", "category": "SPIRITS", "notes": "PDF page 3 Highside row."},
+        {"sourceKey": "p3-highside-highside-amaro", "name": "Highside Amaro", "category": "SPIRITS", "notes": "PDF page 3 Highside row."}
+      ]
+    },
+    {
+      "sourceKey": "p3-pms",
+      "name": "PMS",
+      "products": [
+        {"sourceKey": "p3-pms-faccia-burro-centerbie", "name": "Faccia Burro Centerbie", "legacyNames": ["Faccia Brutto Centerbe"], "category": "SPIRITS", "notes": "PDF page 3 displays Faccia Burro Centerbie."},
+        {"sourceKey": "p3-pms-pineapple-rum", "name": "Pineapple Rum", "category": "SPIRITS", "notes": "PDF page 3 PMS row."}
+      ]
+    },
+    {
+      "sourceKey": "p3-asian-market",
+      "name": "Asian Market",
+      "products": [
+        {"sourceKey": "p3-asian-market-spicy-peanut", "name": "Spicy Peanut", "category": "DRY_GOODS", "notes": "PDF page 3 Asian Market row."},
+        {"sourceKey": "p3-asian-market-sweet-rice", "name": "Sweet Rice", "category": "DRY_GOODS", "notes": "PDF page 3 Asian Market row."},
+        {"sourceKey": "p3-asian-market-garlic-peas", "name": "Garlic Peas", "category": "DRY_GOODS", "notes": "PDF page 3 Asian Market row."}
+      ]
+    },
+    {
+      "sourceKey": "p3-alison",
+      "name": "Alison",
+      "products": [
+        {"sourceKey": "p3-alison-oolong", "name": "Oolong", "category": "TEA_AND_MILK_TEA", "notes": "PDF page 3 Alison row."},
+        {"sourceKey": "p3-alison-hojicha", "name": "Hojicha", "category": "TEA_AND_MILK_TEA", "notes": "PDF page 3 Alison row."},
+        {"sourceKey": "p3-alison-jasmin-tea", "name": "Jasmin Tea", "legacyNames": ["Jasmine Tea"], "category": "TEA_AND_MILK_TEA", "notes": "PDF page 3 displays Jasmin Tea."},
+        {"sourceKey": "p3-alison-black-tea", "name": "Black Tea", "category": "TEA_AND_MILK_TEA", "notes": "PDF page 3 Alison row."},
+        {"sourceKey": "p3-alison-gardenia-water", "name": "Gardenia water", "legacyNames": ["Gardenia Water"], "category": "TEA_AND_MILK_TEA", "notes": "PDF page 3 capitalization preserved."}
+      ]
+    },
+    {
+      "sourceKey": "p4-unspecified-supplier",
+      "name": "Unspecified Page 4 Supplier",
+      "legacyNames": ["Page 20 Supplier"],
+      "notes": "PDF page 4 has no visible vendor heading. This placeholder is intentionally labelled unspecified and must be confirmed with the restaurant.",
+      "products": [
+        {"sourceKey": "p4-27366-pork-gyoza", "code": "27366", "name": "Pork Gyoza", "category": "FROZEN_FOOD", "packageSpecification": "10/21oz", "unitPrice": 33.00, "notes": "PDF page 4 unit price $33.00, historical order quantity 1, line total $33.00."},
+        {"sourceKey": "p4-22130-wp-seaweed-salad", "code": "22130", "name": "WP SEAWEED SALAD", "legacyNames": ["WP Seaweed Salad"], "category": "REFRIGERATED_FOOD", "packageSpecification": "4/4.4", "unitPrice": 12.59, "notes": "PDF page 4 unit price $12.59, historical order quantity 1, line total $12.59."},
+        {"sourceKey": "p4-25100-wp-edamame-soybeans", "code": "25100", "name": "WP EDAMAME SOYBEANS", "legacyNames": ["WP Edamame Soybeans"], "category": "FROZEN_FOOD", "packageSpecification": "case", "orderUnit": "CASE", "orderUnitLabel": "case", "unitPrice": 31.00, "notes": "PDF page 4 unit price $31.00, no visible order quantity, line total $0.00."},
+        {"sourceKey": "p4-27198-deng-gao-folded-bun", "code": "27198", "name": "DENG GAO FOLDED BUN", "legacyNames": ["Deng Gao Folded Bun"], "category": "FROZEN_FOOD", "packageSpecification": "10pc/Bag", "unitPrice": 5.00, "notes": "PDF page 4 unit price $5.00, historical order quantity 22, line total $110.00."},
+        {"sourceKey": "p4-tacoma-tofu-extra-firm", "name": "TACOMA TOFU EXTRA FIRM", "legacyNames": ["Tacoma Tofu Extra Firm"], "category": "REFRIGERATED_FOOD", "packageSpecification": "12pc/case", "orderUnit": "CASE", "orderUnitLabel": "case", "unitPrice": 12.84, "notes": "PDF page 4 has no visible code. Unit price $12.84, historical order quantity 4, line total $51.36."},
+        {"sourceKey": "p4-44488-tonkotsu-ramen-base", "code": "44488", "name": "Tonkotsu ramen base", "legacyNames": ["Tonkotsu Ramen Base"], "category": "DRY_GOODS", "packageSpecification": "35.27oz/Bag", "unitPrice": 15.12, "notes": "PDF page 4 unit price $15.12, historical order quantity 3, line total $45.36."},
+        {"sourceKey": "p4-8745-sesame-ice-cream", "code": "8745", "name": "Sesame ice cream", "legacyNames": ["Sesame Ice Cream"], "category": "FROZEN_FOOD", "packageSpecification": "1.5gal", "unitPrice": 21.09, "notes": "PDF page 4 unit price $21.09, no visible order quantity, line total $0.00."},
+        {"sourceKey": "p4-17620-mocha-ice-cream", "code": "17620", "name": "Mocha ice cream", "legacyNames": ["Mocha Ice Cream"], "category": "FROZEN_FOOD", "packageSpecification": "1.5gal", "unitPrice": 21.09, "notes": "PDF page 4 unit price $21.09, no visible order quantity, line total $0.00."}
+      ]
+    }
+  ],
+  "ambiguities": [
+    "Page 4 has no visible vendor heading; products are imported under Unspecified Page 4 Supplier pending restaurant confirmation.",
+    "CO-HO and Coho appear to refer to the same supplier; kept one canonical CO-HO vendor with page notes.",
+    "Southern Glazer's, Southern Glazer, and SG appear to refer to the same supplier; kept one canonical Southern Glazer's vendor with page notes.",
+    "Page 1 combines Coke / Diet Coke in one order cell while page 2 separates them for inventory; catalog keeps separate Coke and Diet Coke products with notes.",
+    "Glove Black (S/M/L) is a single visible PDF row; no separate S, M, or L product rows were invented.",
+    "Page 3 includes Unit (EA/CASE) headers, but no row has a visible unit value.",
+    "Page 4 historical order quantities and totals were retained in notes rather than default order quantities."
+  ],
+  "correctedValues": [
+    "Replaced Page 20 Supplier with Unspecified Page 4 Supplier because the real PDF has only four pages and page 4 has no visible supplier name.",
+    "Preserved PDF-visible spellings such as Volka Smiroff, Rum Barcadi, Faccia Burro Centerbie, Jasmin Tea, and Gardenia water; prior normalized names are retained as legacyNames for idempotent matching.",
+    "Split Sho Chiku Bai 1L case and Sho Chiku Bai 1.5L bottle into separate catalog products because the PDF shows distinct rows/specifications."
+  ],
+  "duplicateCandidates": [
+    "CO-HO / Coho",
+    "Southern Glazer's / Southern Glazer / SG",
+    "Southern Glazer's Ming River / CD Ming River",
+    "Coke / Diet Coke combined order row versus separate inventory rows"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Restaurant Ops",
+    "slug": "restaurant-ops",
+    "scheme": "restaurantops",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-asset"
+    ]
+  }
+}

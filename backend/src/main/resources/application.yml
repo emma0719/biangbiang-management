@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: restaurant-ops
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/restaurant_ops}
+    username: ${DB_USERNAME:restaurant_ops}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+app:
+  public-base-url: ${APP_PUBLIC_BASE_URL:https://app.example.com}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:8081,http://localhost:19006}
+  jwt:
+    issuer: ${JWT_ISSUER:restaurant-ops}
+    secret: ${JWT_SECRET:}
+    access-token-minutes: ${JWT_ACCESS_TOKEN_MINUTES:15}
+  toast-pin:
+    encryption-key: ${TOAST_PIN_ENCRYPTION_KEY:}
+  profile-photo:
+    storage-dir: ${PROFILE_PHOTO_STORAGE_DIR:./work/profile-photos}
+    max-bytes: ${PROFILE_PHOTO_MAX_BYTES:2097152}
+  security:
+    password-min-length: ${PASSWORD_MIN_LENGTH:8}
+    invitation-hours: ${INVITATION_HOURS:24}
+    reset-token-minutes: ${RESET_TOKEN_MINUTES:30}
+    contact-change-minutes: ${CONTACT_CHANGE_MINUTES:30}
+    rate-limit-per-minute: ${RATE_LIMIT_PER_MINUTE:10}
+  bootstrap:
+    enabled: ${BOOTSTRAP_MANAGER_ENABLED:false}
+    email: ${BOOTSTRAP_MANAGER_EMAIL:}
+    phone: ${BOOTSTRAP_MANAGER_PHONE:}
+    password: ${BOOTSTRAP_MANAGER_PASSWORD:}
+    english-name: ${BOOTSTRAP_MANAGER_ENGLISH_NAME:}
+    preferred-name: ${BOOTSTRAP_MANAGER_PREFERRED_NAME:}
+    toast-pin: ${BOOTSTRAP_MANAGER_TOAST_PIN:}
+  development-seed:
+    enabled: ${DEVELOPMENT_SEED_ENABLED:false}
+  ordering-seed:
+    enabled: ${ORDERING_SEED_ENABLED:false}
+
+springdoc:
+  api-docs:
+    path: /api-docs
