@@ -80,14 +80,21 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('库存')).toBeTruthy();
   });
 
-  it('shows the shift unavailable shell without actionable exchange data', () => {
+  it('shows the shift coverage employee tabs', async () => {
+    (api as jest.Mock).mockImplementation((path: string) => {
+      if (path === '/api/me') return Promise.resolve(profile(['HOST']));
+      if (path === '/api/employees') return Promise.resolve([]);
+      if (path === '/api/coverage-requests/pool') return Promise.resolve([]);
+      if (path === '/api/coverage-requests/mine') return Promise.resolve([]);
+      if (path === '/api/coverage-requests/involving-me') return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
     render(<Shift />, { wrapper: TestProviders });
 
-    expect(screen.getByText('Shift exchange is not available yet')).toBeTruthy();
-    expect(screen.getByText('Post shifts needing coverage')).toBeTruthy();
-    expect(screen.getByText('View available shifts')).toBeTruthy();
-    expect(screen.getByText('Request shift coverage')).toBeTruthy();
-    expect(screen.getByText('Manager approval')).toBeTruthy();
+    expect(await screen.findByText('New Request')).toBeTruthy();
+    expect(screen.getByText('Shift Pool')).toBeTruthy();
+    expect(screen.getByText('My Requests')).toBeTruthy();
   });
 
   function profile(positions: string[]) {

@@ -73,10 +73,16 @@ public final class OrderingDtos {
   public record ReceiveLineRequest(@NotNull Long lineId, @NotNull @DecimalMin("0.000") BigDecimal quantityReceivedNow, Boolean allowOverReceive, String note) {}
   public record ReceiveOrderRequest(@NotEmpty List<ReceiveLineRequest> lines) {}
 
-  public record CreateOrderPlanRequest(@NotNull StoreCode locationCode, @NotNull Long sourceInventorySessionId, @NotNull LocalDate businessDate, Long assignedOrdererEmployeeId, LocalDate dueDate, LocalTime dueTime, String notes) {}
+  public record CreateOrderPlanRequest(@NotNull StoreCode locationCode, Long sourceInventorySessionId, @NotNull LocalDate businessDate, Long assignedOrdererEmployeeId, LocalDate dueDate, LocalTime dueTime, String notes, OrderBusiness orderBusiness) {
+    public CreateOrderPlanRequest(StoreCode locationCode, Long sourceInventorySessionId, LocalDate businessDate, Long assignedOrdererEmployeeId, LocalDate dueDate, LocalTime dueTime, String notes) {
+      this(locationCode, sourceInventorySessionId, businessDate, assignedOrdererEmployeeId, dueDate, dueTime, notes, OrderBusiness.BIANGBIANG_FRONT);
+    }
+  }
   public record UpsertOrderPlanLineRequest(@NotNull Long productId, @DecimalMin("0.000") BigDecimal finalOrderQuantity, String notes) {}
   public record UpsertOrderPlanLinesRequest(@NotEmpty List<UpsertOrderPlanLineRequest> lines) {}
-  public record OrderPlanResponse(Long id, StoreCode locationCode, Long sourceInventorySessionId, LocalDate inventoryBusinessDate, Long inventoryCompletedByEmployeeId, String inventoryCompletedByNameSnapshot, Instant inventoryCompletedAt, LocalDate businessDate, OrderPlanStatus status, Long createdByEmployeeId, Long assignedOrdererEmployeeId, LocalDate dueDate, LocalTime dueTime, String notes, Instant startedAt, Long submittedByEmployeeId, String submittedByNameSnapshot, Instant submittedAt, Long completedByEmployeeId, String completedByNameSnapshot, Instant completedAt, Long rejectedByEmployeeId, String rejectedByNameSnapshot, Instant rejectedAt, String rejectionReason, Instant cancelledAt, List<OrderPlanLineResponse> lines, List<PurchaseOrderResponse> vendorOrders, List<AuditResponse> auditEvents) {
+  public record UpdateOrderPlanAmountRequest(@NotNull Long lineId, @NotNull @DecimalMin("0.000") BigDecimal finalOrderQuantity, String notes) {}
+  public record UpdateOrderPlanAmountsRequest(@NotEmpty List<UpdateOrderPlanAmountRequest> lines) {}
+  public record OrderPlanResponse(Long id, StoreCode locationCode, OrderBusiness orderBusiness, String orderBusinessName, Long sourceInventorySessionId, LocalDate inventoryBusinessDate, Long inventoryCompletedByEmployeeId, String inventoryCompletedByNameSnapshot, Instant inventoryCompletedAt, LocalDate businessDate, OrderPlanStatus status, Long createdByEmployeeId, Long assignedOrdererEmployeeId, LocalDate dueDate, LocalTime dueTime, String notes, Instant startedAt, Long submittedByEmployeeId, String submittedByNameSnapshot, Instant submittedAt, Long lastModifiedByEmployeeId, String lastModifiedByNameSnapshot, Instant updatedAt, Long reviewedByEmployeeId, String reviewedByNameSnapshot, Instant reviewedAt, String reviewNote, Long completedByEmployeeId, String completedByNameSnapshot, Instant completedAt, Long rejectedByEmployeeId, String rejectedByNameSnapshot, Instant rejectedAt, String rejectionReason, Instant cancelledAt, List<OrderPlanLineResponse> lines, List<PurchaseOrderResponse> vendorOrders, List<AuditResponse> auditEvents) {
     @JsonProperty("submittedByName")
     public String submittedByName() {
       return submittedByNameSnapshot;

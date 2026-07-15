@@ -47,7 +47,7 @@ public class ProfileService {
   }
 
   public ProfileDtos.EmployeePublicResponse publicResponse(Employee employee) {
-    return new ProfileDtos.EmployeePublicResponse(employee.getId(), employee.getDisplayName(), employee.getProfilePhotoKey(), employee.getPositions(), employee.getHomeStore());
+    return new ProfileDtos.EmployeePublicResponse(employee.getId(), employee.getDisplayName(), employee.getProfilePhotoKey(), employee.getPositions(), employee.getHomeStore(), employee.getStatus());
   }
 
   @Transactional

@@ -29,6 +29,15 @@ export type EmployeePrivate = {
   createdAt: string;
 };
 
+export type EmployeePublic = {
+  id: number;
+  displayName: string;
+  profilePhotoKey?: string;
+  homeStore: StoreCode;
+  positions: Position[];
+  status: EmployeeStatus;
+};
+
 export type Invitation = {
   id: number;
   positions: Position[];
@@ -65,7 +74,7 @@ export type CatalogUnit = 'EA' | 'BOTTLE' | 'CAN' | 'BAG' | 'BOX' | 'CASE' | 'PA
 
 export type PurchaseOrderStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
 export type InventoryCountStatus = 'DRAFT' | 'IN_PROGRESS' | 'SUBMITTED' | 'REVIEWED' | 'LOCKED' | 'COMPLETED' | 'CANCELLED';
-export type OrderPlanStatus = 'DRAFT' | 'IN_PROGRESS' | 'SUBMITTED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
+export type OrderPlanStatus = 'DRAFT' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'RETURNED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
 export type InventoryBusiness = 'BIANGBIANG_FRONT' | 'PAPER_FAN';
 export type OrderBusiness = 'BIANGBIANG_FRONT' | 'PAPER_FAN';
 
@@ -221,8 +230,10 @@ export type OrderPlanLine = {
 export type OrderPlan = {
   id: number;
   locationCode: StoreCode;
-  sourceInventorySessionId: number;
-  inventoryBusinessDate: string;
+  orderBusiness: OrderBusiness;
+  orderBusinessName: string;
+  sourceInventorySessionId?: number;
+  inventoryBusinessDate?: string;
   inventoryCompletedByEmployeeId?: number;
   inventoryCompletedByNameSnapshot?: string;
   inventoryCompletedAt?: string;
@@ -237,6 +248,13 @@ export type OrderPlan = {
   submittedByEmployeeId?: number;
   submittedByNameSnapshot?: string;
   submittedAt?: string;
+  lastModifiedByEmployeeId?: number;
+  lastModifiedByNameSnapshot?: string;
+  updatedAt?: string;
+  reviewedByEmployeeId?: number;
+  reviewedByNameSnapshot?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
   completedByEmployeeId?: number;
   completedByNameSnapshot?: string;
   completedAt?: string;

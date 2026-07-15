@@ -10,7 +10,7 @@ import org.springframework.web.filter.CorsFilter;
 @Configuration
 public class CorsConfig {
   @Bean
-  CorsFilter corsFilter(AppProperties properties) {
+  UrlBasedCorsConfigurationSource corsConfigurationSource(AppProperties properties) {
     CorsConfiguration configuration = new CorsConfiguration();
     configuration.setAllowedOrigins(Arrays.stream(properties.cors().allowedOrigins().split(",")).map(String::trim).filter(item -> !item.isBlank()).toList());
     configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
@@ -18,6 +18,11 @@ public class CorsConfig {
     configuration.setAllowCredentials(true);
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/api/**", configuration);
+    return source;
+  }
+
+  @Bean
+  CorsFilter corsFilter(UrlBasedCorsConfigurationSource source) {
     return new CorsFilter(source);
   }
 }

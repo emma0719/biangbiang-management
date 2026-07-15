@@ -106,7 +106,7 @@ class InventoryCountPdfHttpIntegrationTest {
     assertThat(pdf).startsWith("%PDF-".getBytes(StandardCharsets.ISO_8859_1));
     assertThat(pdf.length).isGreaterThan(500);
     String text = new String(pdf, StandardCharsets.ISO_8859_1);
-    assertThat(text).contains("Inventory Count", "Date:", "Counted by:", "Inventory PDF Counter", "Vendor", "ITEM", "Qt.", "Unit", "Inventory PDF Vendor", "Inventory PDF Product", "0", "CASE", "Page 1 of");
+    assertThat(text).contains("Inventory Count", "Date:", "Counted by:", "Inventory PDF Counter", "Vendor", "ITEM", "Qty.", "Unit", "Inventory PDF Vendor", "Inventory PDF Product", "0", "CASE", "Page 1 of");
 
     mvc.perform(get("/api/inventory-counts/{id}/pdf", submitted.getId()).with(auth(redmond)))
         .andExpect(status().isForbidden())

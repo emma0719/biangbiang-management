@@ -68,6 +68,11 @@ describe('OrderingScreen', () => {
       if (path.includes('/api/order-plans/') && path.includes('/lines')) return Promise.resolve(plans[0]);
       if (path.includes('/api/order-plans/') && path.includes('/submit')) return Promise.resolve({ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex' });
       if (path.includes('/api/order-plans/') && path.includes('/generate-vendor-orders')) return Promise.resolve(orders);
+      if (path === '/api/order-sessions' && init?.method === 'POST') return Promise.resolve({ ...plans[0], status: 'DRAFT', createdByEmployeeId: profile.id, orderBusiness: 'BIANGBIANG_FRONT' });
+      if (path.includes('/api/order-sessions/') && path.includes('/lines')) return Promise.resolve({ ...plans[0], status: 'IN_PROGRESS', createdByEmployeeId: profile.id, orderBusiness: 'BIANGBIANG_FRONT' });
+      if (path.includes('/api/order-sessions/') && path.includes('/submit')) return Promise.resolve({ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', orderBusiness: 'BIANGBIANG_FRONT' });
+      if (path.includes('/api/order-sessions/') && path.includes('/amounts')) return Promise.resolve({ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', lastModifiedByNameSnapshot: 'Alex', updatedAt: '2026-07-15T18:00:00Z', orderBusiness: 'BIANGBIANG_FRONT', lines: [{ ...plans[0].lines[0], finalOrderQuantity: 9 }] });
+      if (path.includes('/api/order-sessions/') && path.includes('/cancel')) return Promise.resolve({ ...plans[0], status: 'CANCELLED', orderBusiness: 'BIANGBIANG_FRONT' });
       if (path === '/api/purchase-orders' && init?.method === 'POST') return Promise.resolve({ ...orders[0], id: 30, status: 'DRAFT', lines: [] });
       if (path.includes('/lines')) return Promise.resolve({ ...orders[0], id: Number(path.match(/purchase-orders\/(\d+)/)?.[1] ?? orders[0].id), status: 'DRAFT', lines: [line] });
       if (path.includes('/submit')) return Promise.resolve({ ...orders[0], status: 'SUBMITTED', lines: [line] });
@@ -119,7 +124,7 @@ describe('OrderingScreen', () => {
     render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
 
     expect((await screen.findAllByText('New Order')).length).toBeGreaterThan(0);
-    expect(screen.getByText('Review & Receiving')).toBeTruthy();
+    expect(screen.getByText('Order Details')).toBeTruthy();
     expect(screen.getByText('History')).toBeTruthy();
     expect(screen.queryByText('Inventory Count')).toBeNull();
     expect(screen.queryByText('Order Plans')).toBeNull();
@@ -150,16 +155,10 @@ describe('OrderingScreen', () => {
     fireEvent.changeText(screen.getAllByLabelText('Order Quantity')[0], '');
     fireEvent.press(screen.getByText('Save Draft'));
 
-    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/purchase-orders', expect.objectContaining({ method: 'POST' })));
-    const createCall = (api as jest.Mock).mock.calls.find(([path, init]) => path === '/api/purchase-orders' && init?.method === 'POST');
-    expect(JSON.parse(String(createCall[1].body))).toEqual(expect.objectContaining({ locationCode: 'SEATTLE', vendorId: 1, orderBusiness: 'BIANGBIANG_FRONT' }));
-    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/purchase-orders/30/lines', {
-      method: 'PUT',
-      body: JSON.stringify({ lines: [
-        { productId: 10, currentInventoryQuantity: 0, requestedQuantity: 0, notes: '' },
-        { productId: 12, currentInventoryQuantity: 0, requestedQuantity: 0, notes: '' }
-      ] })
-    }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/order-sessions', expect.objectContaining({ method: 'POST' })));
+    const createCall = (api as jest.Mock).mock.calls.find(([path, init]) => path === '/api/order-sessions' && init?.method === 'POST');
+    expect(JSON.parse(String(createCall[1].body))).toEqual(expect.objectContaining({ locationCode: 'SEATTLE', orderBusiness: 'BIANGBIANG_FRONT' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/order-sessions/70/lines', expect.objectContaining({ method: 'PUT' })));
     expect(await screen.findByText('Saved')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Change business'));
@@ -204,43 +203,196 @@ describe('OrderingScreen', () => {
     expect(api).not.toHaveBeenCalledWith('/api/inventory-catalog', expect.anything());
   });
 
-  it('submits order mode by saving a draft before calling the existing submit endpoint', async () => {
-    const submittedOrder = { ...orders[0], id: 30, orderNumber: 'PO-NEW-FRONT-001', status: 'SUBMITTED', lines: [line], submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z' };
+  it('shows a success dialog after submitting an order session and opens refreshed history', async () => {
+    let sessionSubmitted = false;
     (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
       if (path === '/api/me') return Promise.resolve(profile);
       if (path.startsWith('/api/vendors')) return Promise.resolve(vendors);
       if (path.startsWith('/api/order-products')) return Promise.resolve(productsForPath(path));
       if (path.startsWith('/api/purchase-orders?')) return Promise.resolve([]);
       if (path.startsWith('/api/inventory-counts?')) return Promise.resolve(counts);
-      if (path.startsWith('/api/order-plans?')) return Promise.resolve(plans);
-      if (path === '/api/purchase-orders' && init?.method === 'POST') return Promise.resolve({ ...submittedOrder, status: 'DRAFT', lines: [] });
-      if (path === '/api/purchase-orders/30/lines' && init?.method === 'PUT') return Promise.resolve({ ...submittedOrder, status: 'DRAFT' });
-      if (path === '/api/purchase-orders/30/submit' && init?.method === 'POST') return Promise.resolve(submittedOrder);
+      if (path.startsWith('/api/order-plans?')) return Promise.resolve(sessionSubmitted ? [{ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' }] : plans);
+      if (path === '/api/order-sessions' && init?.method === 'POST') return Promise.resolve({ ...plans[0], status: 'DRAFT', createdByEmployeeId: profile.id, orderBusiness: 'BIANGBIANG_FRONT' });
+      if (path === '/api/order-sessions/70/lines' && init?.method === 'PUT') return Promise.resolve({ ...plans[0], status: 'IN_PROGRESS', createdByEmployeeId: profile.id, orderBusiness: 'BIANGBIANG_FRONT' });
+      if (path === '/api/order-sessions/70/submit' && init?.method === 'POST') { sessionSubmitted = true; return Promise.resolve({ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' }); }
       return defaultApiResponse(path, init);
-    });
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation((title, message, buttons) => {
-      buttons?.find((button) => button.text === 'Confirm')?.onPress?.();
     });
     render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
 
     await selectFrontOrderBusiness();
     fireEvent.press(await screen.findByLabelText('Increase quantity Black (Dry mix)'));
-    fireEvent.press(screen.getByText('Submit for Approval'));
+    fireEvent.press(screen.getByText('Submit Order'));
 
-    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/purchase-orders', expect.objectContaining({ method: 'POST' })));
-    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/purchase-orders/30/lines', expect.objectContaining({ method: 'PUT' })));
-    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/purchase-orders/30/submit', { method: 'POST' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/order-sessions', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/order-sessions/70/lines', expect.objectContaining({ method: 'PUT' })));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/order-sessions/70/submit', { method: 'POST', body: undefined }));
+    expect(await screen.findByText('Order Submitted')).toBeTruthy();
+    expect(screen.getByText('Your order was submitted successfully. You can view the submitted order and export its PDF from Order History.')).toBeTruthy();
+    expect(screen.getByText('Stay on Order')).toBeTruthy();
+    expect(screen.getByText('View History')).toBeTruthy();
+    fireEvent.press(screen.getByText('View History'));
     expect(await screen.findByText('Order History')).toBeTruthy();
-    expect(await screen.findByText('PO-NEW-FRONT-001')).toBeTruthy();
-    expect(screen.getByText('BiangBiang Front')).toBeTruthy();
+    expect(await screen.findByText('Order Session #70')).toBeTruthy();
+    expect(await screen.findByText('View PDF')).toBeTruthy();
     expect(screen.queryByText('Save Draft')).toBeNull();
-    alert.mockRestore();
+  });
+
+  it('keeps the user on the submitted order when Stay on Order is selected', async () => {
+    let sessionSubmitted = false;
+    (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/order-plans?')) return Promise.resolve(sessionSubmitted ? [{ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' }] : plans);
+      if (path === '/api/order-sessions/70/submit' && init?.method === 'POST') {
+        sessionSubmitted = true;
+        return Promise.resolve({ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' });
+      }
+      return defaultApiResponse(path, init);
+    });
+    render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
+
+    await selectFrontOrderBusiness();
+    fireEvent.press(await screen.findByLabelText('Increase quantity Black (Dry mix)'));
+    fireEvent.press(screen.getByText('Submit Order'));
+    fireEvent.press(await screen.findByText('Stay on Order'));
+
+    expect(await screen.findByText('Order Details · Session #70')).toBeTruthy();
+    expect(screen.getByText('SUBMITTED')).toBeTruthy();
+    expect(screen.queryByText('Submit Order')).toBeNull();
+  });
+
+  it('shows a failure dialog without clearing the order draft when submit fails', async () => {
+    (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/order-sessions/70/submit' && init?.method === 'POST') return Promise.reject(new ApiError('ORDER_SESSION_HAS_NO_LINES', 409));
+      return defaultApiResponse(path, init);
+    });
+    render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
+
+    await selectFrontOrderBusiness();
+    fireEvent.press(await screen.findByLabelText('Increase quantity Black (Dry mix)'));
+    fireEvent.press(screen.getByText('Submit Order'));
+
+    expect(await screen.findByText('Order Submission Failed')).toBeTruthy();
+    expect(screen.getByText('ORDER_SESSION_HAS_NO_LINES')).toBeTruthy();
+    expect(screen.queryByText('Order Submitted')).toBeNull();
+    fireEvent.press(screen.getByText('Stay on Order'));
+    expect(await screen.findByText('Submit Order')).toBeTruthy();
+    expect(screen.getAllByLabelText('Order Quantity')[0].props.value).toBe('1');
+  });
+
+  it('disables order submit while submitting to prevent duplicate submit calls', async () => {
+    let resolveSubmit: (order: any) => void = () => undefined;
+    (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/order-sessions/70/submit' && init?.method === 'POST') return new Promise((resolve) => { resolveSubmit = resolve; });
+      return defaultApiResponse(path, init);
+    });
+    render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
+
+    await selectFrontOrderBusiness();
+    fireEvent.press(await screen.findByLabelText('Increase quantity Black (Dry mix)'));
+    fireEvent.press(screen.getByText('Submit Order'));
+    await waitFor(() => expect(screen.getByText('Submitting order...')).toBeDisabled());
+    fireEvent.press(screen.getByText('Submitting order...'));
+
+    expect((api as jest.Mock).mock.calls.filter(([path, init]) => path === '/api/order-sessions/70/submit' && init?.method === 'POST')).toHaveLength(1);
+    resolveSubmit({ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' });
+  });
+
+  it('opens the session PDF directly from order history with the authenticated PDF flow', async () => {
+    (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/order-plans?')) return Promise.resolve([{ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' }]);
+      return defaultApiResponse(path, init);
+    });
+    render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
+
+    fireEvent.press(await screen.findByText('History'));
+    fireEvent.press(await screen.findByText('View PDF'));
+
+    expect(preparePdfViewTarget).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(apiBinary).toHaveBeenCalledWith('/api/order-plans/70/pdf/view'));
+    expect(apiBinary).not.toHaveBeenCalledWith('/api/purchase-orders/70/pdf');
+    expect(viewPdfFile).toHaveBeenCalledWith(pdfBytes, 'order-plan-70-v1.pdf', pdfTarget);
+  });
+
+  it('downloads the session PDF directly from order history with the authenticated PDF flow', async () => {
+    (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/order-plans?')) return Promise.resolve([{ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' }]);
+      return defaultApiResponse(path, init);
+    });
+    render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
+
+    fireEvent.press(await screen.findByText('History'));
+    fireEvent.press(await screen.findByText('Download PDF'));
+
+    await waitFor(() => expect(apiBinary).toHaveBeenCalledWith('/api/order-plans/70/pdf/download'));
+    expect(apiBinary).not.toHaveBeenCalledWith('/api/purchase-orders/70/pdf');
+    expect(downloadPdfFile).toHaveBeenCalledWith(pdfBytes, 'order-plan-70-v1.pdf');
+  });
+
+  it('lets business partners edit submitted order amounts and refreshes the session PDF state', async () => {
+    const submittedSession = { ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', updatedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' };
+    (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/order-plans?')) return Promise.resolve([submittedSession]);
+      if (path === '/api/order-sessions/70/amounts' && init?.method === 'PUT') {
+        return Promise.resolve({ ...submittedSession, lastModifiedByNameSnapshot: 'Alex', updatedAt: '2026-07-15T18:00:00Z', lines: [{ ...plans[0].lines[0], finalOrderQuantity: 9 }] });
+      }
+      return defaultApiResponse(path, init);
+    });
+    render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
+
+    await selectFrontOrderBusiness();
+    fireEvent.press(await screen.findByText('History'));
+    fireEvent.press(await screen.findByText('Edit Order Amounts'));
+    fireEvent.changeText(await screen.findByLabelText('Order Quantity'), '9');
+    fireEvent.press(screen.getByText('Save Changes'));
+
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/order-sessions/70/amounts', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ lines: [{ lineId: 701, finalOrderQuantity: 9, notes: '' }] })
+    })));
+    expect(await screen.findByText('Order Updated')).toBeTruthy();
+    expect(screen.getByText('The order amounts were updated successfully. The session PDF has been refreshed.')).toBeTruthy();
+  });
+
+  it('keeps submitted amount edits on screen when saving fails', async () => {
+    const submittedSession = { ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', submittedAt: '2026-07-14T20:00:00Z', orderBusiness: 'BIANGBIANG_FRONT' };
+    (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/order-plans?')) return Promise.resolve([submittedSession]);
+      if (path === '/api/order-sessions/70/amounts' && init?.method === 'PUT') return Promise.reject(new ApiError('ORDER_PLAN_PDF_RENDER_FAILED', 500));
+      return defaultApiResponse(path, init);
+    });
+    render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
+
+    await selectFrontOrderBusiness();
+    fireEvent.press(await screen.findByText('History'));
+    fireEvent.press(await screen.findByText('Edit Order Amounts'));
+    fireEvent.changeText(await screen.findByLabelText('Order Quantity'), '9');
+    fireEvent.press(screen.getByText('Save Changes'));
+
+    expect(await screen.findByText('Unable to update order')).toBeTruthy();
+    expect(screen.queryByText('Order Updated')).toBeNull();
+    fireEvent.press(screen.getByText('Stay on Order'));
+    expect(screen.getByLabelText('Order Quantity').props.value).toBe('9');
+  });
+
+  it('removes draft order sessions from history without showing PDF actions', async () => {
+    (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/order-plans?')) return Promise.resolve([{ ...plans[0], status: 'DRAFT', orderBusiness: 'BIANGBIANG_FRONT' }]);
+      if (path === '/api/order-sessions/70/cancel' && init?.method === 'POST') return Promise.resolve({ ...plans[0], status: 'CANCELLED', orderBusiness: 'BIANGBIANG_FRONT' });
+      return defaultApiResponse(path, init);
+    });
+    render(<OrderingScreen mode="order" />, { wrapper: TestProviders });
+
+    fireEvent.press(await screen.findByText('History'));
+    expect(await screen.findByText('Continue Editing · Session #70')).toBeTruthy();
+    expect(screen.queryByText('View PDF')).toBeNull();
+    fireEvent.press(screen.getByText('Remove Draft'));
+
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/api/order-sessions/70/cancel', { method: 'POST', body: undefined }));
   });
 
   it('disables order mode actions while saving', async () => {
-    let resolveCreate: (order: typeof orders[number]) => void = () => undefined;
+    let resolveCreate: (order: typeof plans[number]) => void = () => undefined;
     (api as jest.Mock).mockImplementation((path: string, init?: RequestInit) => {
-      if (path === '/api/purchase-orders' && init?.method === 'POST') return new Promise((resolve) => { resolveCreate = resolve; });
+      if (path === '/api/order-sessions' && init?.method === 'POST') return new Promise((resolve) => { resolveCreate = resolve; });
       return defaultApiResponse(path, init);
     });
 
@@ -248,9 +400,9 @@ describe('OrderingScreen', () => {
     await selectFrontOrderBusiness();
     fireEvent.press(await screen.findByText('Save Draft'));
 
-    await waitFor(() => expect(screen.getByText('Save Draft')).toBeDisabled());
-    expect(screen.getByText('Submit for Approval')).toBeDisabled();
-    resolveCreate({ ...orders[0], id: 30, status: 'DRAFT', lines: [] });
+    await waitFor(() => expect(screen.getByText('Loading')).toBeDisabled());
+    expect(screen.getByText('Submit Order')).toBeDisabled();
+    resolveCreate({ ...plans[0], status: 'DRAFT' });
   });
 
   it('shows inventory count and history in inventory mode without order or order plan workspaces', async () => {
@@ -802,7 +954,7 @@ describe('OrderingScreen', () => {
     render(<OrderingScreen />, { wrapper: TestProviders });
 
     fireEvent.press(await screen.findByText('Order Plans'));
-    expect(await screen.findByText('Approved PDF')).toBeTruthy();
+    expect(await screen.findByText('Session PDF')).toBeTruthy();
     expect(await screen.findByText('order-plan-70-v1.pdf')).toBeTruthy();
     expect(await screen.findByText('Manager One')).toBeTruthy();
     expect(await screen.findByText('12.0 KB')).toBeTruthy();
@@ -813,7 +965,7 @@ describe('OrderingScreen', () => {
     render(<OrderingScreen />, { wrapper: TestProviders });
 
     fireEvent.press(await screen.findByText('Order Plans'));
-    expect(await screen.findByText('PDF will be available after this order plan is approved.')).toBeTruthy();
+    expect(await screen.findByText('PDF will be available after this order session is submitted.')).toBeTruthy();
     expect(screen.queryByText('View PDF')).toBeNull();
     expect(screen.queryByText('Download PDF')).toBeNull();
 
@@ -1120,6 +1272,9 @@ function defaultApiResponse(path: string, init?: RequestInit) {
   if (path.includes('/api/order-plans/') && path.includes('/lines')) return Promise.resolve(plans[0]);
   if (path.includes('/api/order-plans/') && path.includes('/submit')) return Promise.resolve({ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex' });
   if (path.includes('/api/order-plans/') && path.includes('/generate-vendor-orders')) return Promise.resolve(orders);
+  if (path === '/api/order-sessions' && init?.method === 'POST') return Promise.resolve({ ...plans[0], status: 'DRAFT', createdByEmployeeId: profile.id, orderBusiness: 'BIANGBIANG_FRONT' });
+  if (path.includes('/api/order-sessions/') && path.includes('/lines')) return Promise.resolve({ ...plans[0], status: 'IN_PROGRESS', createdByEmployeeId: profile.id, orderBusiness: 'BIANGBIANG_FRONT' });
+  if (path.includes('/api/order-sessions/') && path.includes('/submit')) return Promise.resolve({ ...plans[0], status: 'SUBMITTED', submittedByNameSnapshot: 'Alex', orderBusiness: 'BIANGBIANG_FRONT' });
   if (path === '/api/purchase-orders' && init?.method === 'POST') return Promise.resolve({ ...orders[0], id: 30, status: 'DRAFT', lines: [] });
   if (path.includes('/lines')) return Promise.resolve({ ...orders[0], id: Number(path.match(/purchase-orders\/(\d+)/)?.[1] ?? orders[0].id), status: 'DRAFT', lines: [line] });
   if (path.includes('/submit')) return Promise.resolve({ ...orders[0], status: 'SUBMITTED', lines: [line] });

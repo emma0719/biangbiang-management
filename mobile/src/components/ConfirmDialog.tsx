@@ -8,6 +8,7 @@ type ConfirmDialogAction = {
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
+  accessibilityLabel?: string;
 };
 
 export function ConfirmDialog({ visible, title, actions, message, errorMessage, onCancel }: { visible: boolean; title: string; actions: ConfirmDialogAction[]; message?: string; errorMessage?: string; onCancel: () => void }) {
@@ -22,12 +23,12 @@ export function ConfirmDialog({ visible, title, actions, message, errorMessage, 
           <View style={styles.actions}>
             {actions.map((action) => {
               if (action.variant === 'danger') {
-                return <DangerButton key={action.label} label={action.label} onPress={action.onPress} disabled={action.disabled} />;
+                return <DangerButton key={action.label} label={action.label} onPress={action.onPress} disabled={action.disabled} accessibilityLabel={action.accessibilityLabel} />;
               }
               if (action.variant === 'secondary') {
-                return <SecondaryButton key={action.label} label={action.label} onPress={action.onPress} disabled={action.disabled} />;
+                return <SecondaryButton key={action.label} label={action.label} onPress={action.onPress} disabled={action.disabled} accessibilityLabel={action.accessibilityLabel} />;
               }
-              return <PrimaryButton key={action.label} label={action.label} onPress={action.onPress} disabled={action.disabled} />;
+              return <PrimaryButton key={action.label} label={action.label} onPress={action.onPress} disabled={action.disabled} accessibilityLabel={action.accessibilityLabel} />;
             })}
           </View>
         </View>

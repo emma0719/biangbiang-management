@@ -88,7 +88,7 @@ public class FrontOrderCatalogImporter implements ApplicationRunner {
         if (writableProduct || product.getCategory() == null) product.setCategory(sourceProduct.category());
         InventoryBusiness business = inventoryBusiness(sourceProduct.sourceKey());
         product.setInventoryBusiness(business);
-        product.setOrderBusiness(orderBusiness(business));
+        product.setOrderBusiness(orderBusiness(sourceProduct.sourceKey(), business));
         if (writableProduct || product.getInventoryUnit() == null || product.getInventoryUnit() == CatalogUnit.OTHER) product.setInventoryUnit(sourceProduct.inventoryUnit() == null ? CatalogUnit.OTHER : sourceProduct.inventoryUnit());
         if (writableProduct || isBlank(product.getInventoryUnitLabel())) product.setInventoryUnitLabel(sourceProduct.inventoryUnitLabel());
         if (writableProduct || product.getOrderUnit() == null || product.getOrderUnit() == CatalogUnit.OTHER) product.setOrderUnit(sourceProduct.orderUnit() == null ? CatalogUnit.OTHER : sourceProduct.orderUnit());
@@ -165,7 +165,10 @@ public class FrontOrderCatalogImporter implements ApplicationRunner {
     return null;
   }
 
-  private OrderBusiness orderBusiness(InventoryBusiness business) {
+  private OrderBusiness orderBusiness(String sourceKey, InventoryBusiness business) {
+    if (sourceKey != null && (sourceKey.startsWith("p1-") || sourceKey.startsWith("p2-") || sourceKey.startsWith("p1-p2-"))) {
+      return OrderBusiness.BIANGBIANG_FRONT;
+    }
     if (business == null) return null;
     return business == InventoryBusiness.PAPER_FAN ? OrderBusiness.PAPER_FAN : OrderBusiness.BIANGBIANG_FRONT;
   }

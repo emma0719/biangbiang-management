@@ -19,8 +19,10 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
@@ -28,6 +30,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("dev")
 @Testcontainers
 class MobileProductionFlowIntegrationTest {
   @Container
@@ -51,6 +54,7 @@ class MobileProductionFlowIntegrationTest {
     registry.add("app.bootstrap.english-name", () -> "Morgan Manager");
     registry.add("app.bootstrap.preferred-name", () -> "Morgan");
     registry.add("app.bootstrap.toast-pin", () -> "8000");
+    registry.add("app.development-seed.enabled", () -> "true");
   }
 
   @Autowired TestRestTemplate rest;
@@ -85,6 +89,65 @@ class MobileProductionFlowIntegrationTest {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getHeaders().getAccessControlAllowOrigin()).isEqualTo("http://localhost:8081");
     assertThat(response.getHeaders().getAccessControlAllowMethods()).contains(HttpMethod.PUT);
+  }
+
+  @Test
+  void loginEndpointCorsAndTokenFlowWorkForDevelopmentAccount() {
+    HttpHeaders preflightHeaders = new HttpHeaders();
+    preflightHeaders.setOrigin("http://localhost:8081");
+    preflightHeaders.setAccessControlRequestMethod(HttpMethod.POST);
+    preflightHeaders.setAccessControlRequestHeaders(java.util.List.of("content-type"));
+
+    ResponseEntity<Void> preflight = rest.exchange("/api/auth/login", HttpMethod.OPTIONS, new HttpEntity<>(preflightHeaders), Void.class);
+
+    assertThat(preflight.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(preflight.getHeaders().getAccessControlAllowOrigin()).isEqualTo("http://localhost:8081");
+    assertThat(preflight.getHeaders().getAccessControlAllowMethods()).contains(HttpMethod.POST);
+
+    ResponseEntity<AuthDtos.TokenResponse> login = rest.exchange(
+        "/api/auth/login",
+        HttpMethod.POST,
+        new HttpEntity<>(new AuthDtos.LoginRequest("test_admin", "Test1234!"), jsonHeadersWithOrigin()),
+        AuthDtos.TokenResponse.class
+    );
+
+    assertThat(login.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(login.getHeaders().getAccessControlAllowOrigin()).isEqualTo("http://localhost:8081");
+    assertThat(login.getBody()).isNotNull();
+    assertThat(login.getBody().accessToken()).isNotBlank();
+
+    ResponseEntity<ProfileDtos.EmployeePrivateResponse> me = rest.exchange(
+        "/api/me",
+        HttpMethod.GET,
+        authenticated(login.getBody().accessToken(), null, true),
+        ProfileDtos.EmployeePrivateResponse.class
+    );
+
+    assertThat(me.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(me.getHeaders().getAccessControlAllowOrigin()).isEqualTo("http://localhost:8081");
+    assertThat(me.getBody()).isNotNull();
+    assertThat(me.getBody().email()).isEqualTo("test_admin@dev.example.com");
+  }
+
+  @Test
+  void invalidLoginAndUnauthenticatedProtectedRequestsReturnCorsReadableResponses() {
+    ResponseEntity<Map<String, String>> invalidLogin = rest.exchange(
+        "/api/auth/login",
+        HttpMethod.POST,
+        new HttpEntity<>(new AuthDtos.LoginRequest("test_admin", "wrong-password"), jsonHeadersWithOrigin()),
+        new ParameterizedTypeReference<>() {}
+    );
+
+    assertThat(invalidLogin.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(invalidLogin.getHeaders().getAccessControlAllowOrigin()).isEqualTo("http://localhost:8081");
+    assertThat(invalidLogin.getBody()).containsEntry("code", "AUTH_INVALID_CREDENTIALS");
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setOrigin("http://localhost:8081");
+    ResponseEntity<String> unauthenticatedMe = rest.exchange("/api/me", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+    assertThat(unauthenticatedMe.getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(unauthenticatedMe.getHeaders().getAccessControlAllowOrigin()).isEqualTo("http://localhost:8081");
   }
 
   @Test
@@ -207,8 +270,22 @@ class MobileProductionFlowIntegrationTest {
   }
 
   private HttpEntity<?> authenticated(String accessToken, Object body) {
+    return authenticated(accessToken, body, false);
+  }
+
+  private HttpEntity<?> authenticated(String accessToken, Object body, boolean includeOrigin) {
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(accessToken);
+    if (includeOrigin) {
+      headers.setOrigin("http://localhost:8081");
+    }
     return new HttpEntity<>(body, headers);
+  }
+
+  private HttpHeaders jsonHeadersWithOrigin() {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setOrigin("http://localhost:8081");
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    return headers;
   }
 }

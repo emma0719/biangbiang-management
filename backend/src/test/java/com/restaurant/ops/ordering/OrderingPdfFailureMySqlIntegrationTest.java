@@ -22,6 +22,8 @@ import com.restaurant.ops.ordering.OrderingDtos.UpsertOrderPlanLineRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertOrderPlanLinesRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertPurchaseOrderLineRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertPurchaseOrderLinesRequest;
+import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderPlanAmountRequest;
+import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderPlanAmountsRequest;
 import com.restaurant.ops.ordering.OrderingDtos.VendorRequest;
 import com.restaurant.ops.ordering.OrderingEnums.CatalogCategory;
 import com.restaurant.ops.ordering.OrderingEnums.CatalogUnit;
@@ -30,6 +32,7 @@ import com.restaurant.ops.ordering.OrderingEnums.PurchaseOrderStatus;
 import com.restaurant.ops.security.SecureTokenService;
 import com.restaurant.ops.security.SensitiveValueProtector;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.List;
@@ -104,7 +107,7 @@ class OrderingPdfFailureMySqlIntegrationTest {
   }
 
   @Test
-  void orderPlanPdfGenerationFailureRollsBackApproval() {
+  void orderPlanPdfGenerationFailureRollsBackSubmit() {
     Employee orderer = employee("order-plan-pdf-failure-orderer@example.com", Position.HOST, "7411");
     Employee approver = employee("order-plan-pdf-failure-approver@example.com", Position.OWNER, "7412");
     var vendor = ordering.saveVendor(approver, new VendorRequest(StoreCode.SEATTLE, "Order Plan PDF Failure Vendor", null, null, null, null, null, Set.of(), null, null, true, 1), null);
@@ -118,21 +121,76 @@ class OrderingPdfFailureMySqlIntegrationTest {
     plan = ordering.upsertOrderPlanLines(orderer, plan.getId(), new UpsertOrderPlanLinesRequest(List.of(
         new UpsertOrderPlanLineRequest(product.getId(), new BigDecimal("3"), "final")
     )));
-    plan = ordering.submitOrderPlan(orderer, plan.getId());
     Long planId = plan.getId();
     when(orderPlanPdfService.generate(any(OrderPlanSession.class), anyList(), any(Employee.class), anyInt()))
         .thenThrow(new IllegalStateException("ORDER_PLAN_PDF_RENDER_FAILED"));
 
-    assertThatThrownBy(() -> ordering.approveOrderPlan(approver, planId))
+    assertThatThrownBy(() -> ordering.submitOrderPlan(orderer, planId))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("ORDER_PLAN_PDF_RENDER_FAILED");
 
     OrderPlanSession persisted = orderPlans.findById(planId).orElseThrow();
-    assertThat(persisted.getStatus()).isEqualTo(OrderPlanStatus.SUBMITTED);
+    assertThat(persisted.getStatus()).isEqualTo(OrderPlanStatus.IN_PROGRESS);
     assertThat(persisted.getCompletedBy()).isNull();
     assertThat(persisted.getCompletedByNameSnapshot()).isNull();
     assertThat(persisted.getCompletedAt()).isNull();
     assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(planId)).isEmpty();
+  }
+
+  @Test
+  void orderPlanPdfGenerationFailureRollsBackSubmittedAmountUpdates() {
+    Employee orderer = employee("order-plan-pdf-update-failure-orderer@example.com", Position.HOST, "7421");
+    Employee manager = employee("order-plan-pdf-update-failure-manager@example.com", Position.OWNER, "7422");
+    var vendor = ordering.saveVendor(manager, new VendorRequest(StoreCode.SEATTLE, "Order Plan PDF Update Failure Vendor", null, null, null, null, null, Set.of(), null, null, true, 1), null);
+    var product = ordering.saveProduct(manager, new ProductRequest(StoreCode.SEATTLE, vendor.getId(), "OPUPFAIL-1", "Order Plan Update Failure Rice", null, CatalogCategory.DRY_GOODS, null, CatalogUnit.CASE, null, CatalogUnit.CASE, null, "case", new BigDecimal("11.00"), "USD", new BigDecimal("4"), null, null, true, 1, null), null);
+    var inventory = ordering.createInventory(orderer, new CreateInventorySessionRequest(StoreCode.SEATTLE, LocalDate.of(2026, 8, 27), "pdf update failure count"));
+    inventory = ordering.upsertInventoryLines(orderer, inventory.getId(), new UpsertInventoryLinesRequest(List.of(
+        new UpsertInventoryLineRequest(product.getId(), BigDecimal.ONE, CatalogUnit.CASE, "counted")
+    )));
+    inventory = ordering.submitInventory(orderer, inventory.getId());
+    var plan = ordering.createOrderPlan(orderer, new CreateOrderPlanRequest(StoreCode.SEATTLE, inventory.getId(), LocalDate.of(2026, 8, 28), null, null, null, "pdf update failure plan"));
+    plan = ordering.upsertOrderPlanLines(orderer, plan.getId(), new UpsertOrderPlanLinesRequest(List.of(
+        new UpsertOrderPlanLineRequest(product.getId(), new BigDecimal("3"), "final")
+    )));
+    when(orderPlanPdfService.generate(any(OrderPlanSession.class), anyList(), any(Employee.class), anyInt()))
+        .thenAnswer(invocation -> fakeOrderPlanPdf(invocation.getArgument(0), invocation.getArgument(2), invocation.getArgument(3)))
+        .thenThrow(new IllegalStateException("ORDER_PLAN_PDF_UPDATE_RENDER_FAILED"));
+    plan = ordering.submitOrderPlan(orderer, plan.getId());
+    Long planId = plan.getId();
+    Long lineId = ordering.orderPlanLines(planId).stream().filter(line -> line.getProduct().getId().equals(product.getId())).findFirst().orElseThrow().getId();
+    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(planId)).singleElement().satisfies(pdf -> {
+      assertThat(pdf.getVersionNumber()).isEqualTo(1);
+      assertThat(pdf.isCurrentVersion()).isTrue();
+    });
+
+    assertThatThrownBy(() -> ordering.updateSubmittedOrderPlanAmounts(manager, planId, new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(lineId, new BigDecimal("9"), "will roll back")))))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("ORDER_PLAN_PDF_UPDATE_RENDER_FAILED");
+
+    assertThat(orderPlans.findById(planId).orElseThrow().getStatus()).isEqualTo(OrderPlanStatus.SUBMITTED);
+    assertThat(ordering.orderPlanLines(planId).stream().filter(line -> line.getId().equals(lineId)).findFirst().orElseThrow().getFinalOrderQuantity()).isEqualByComparingTo("3");
+    assertThat(orderPlans.findById(planId).orElseThrow().getLastModifiedBy()).isNull();
+    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(planId)).singleElement().satisfies(pdf -> {
+      assertThat(pdf.getVersionNumber()).isEqualTo(1);
+      assertThat(pdf.isCurrentVersion()).isTrue();
+    });
+  }
+
+  private OrderPlanPdfDocument fakeOrderPlanPdf(OrderPlanSession plan, Employee actor, Integer version) {
+    byte[] content = "%PDF-1.4 fake order plan pdf".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+    OrderPlanPdfDocument document = new OrderPlanPdfDocument();
+    document.setOrderPlan(plan);
+    document.setVersionNumber(version);
+    document.setFilename("order-session-" + plan.getId() + "-v" + version + ".pdf");
+    document.setMimeType("application/pdf");
+    document.setGeneratedAt(Instant.now());
+    document.setGeneratedBy(actor);
+    document.setGeneratedByNameSnapshot(actor.getDisplayName());
+    document.setByteSize(content.length);
+    document.setChecksumSha256("0".repeat(64));
+    document.setContent(content);
+    document.setCurrentVersion(true);
+    return document;
   }
 
   private Employee employee(String email, Position position, String toastPin) {

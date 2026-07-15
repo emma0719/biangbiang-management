@@ -8,12 +8,14 @@ import com.restaurant.ops.employee.Position;
 import com.restaurant.ops.employee.StoreCode;
 import com.restaurant.ops.security.SecureTokenService;
 import com.restaurant.ops.security.SensitiveValueProtector;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,20 +53,22 @@ public class DevelopmentEmployeeSeedInitializer implements ApplicationRunner {
   private final PasswordEncoder passwordEncoder;
   private final SecureTokenService tokens;
   private final SensitiveValueProtector valueProtector;
+  private final Environment environment;
 
-  public DevelopmentEmployeeSeedInitializer(AppProperties properties, EmployeeRepository employees, Normalizer normalizer, PasswordEncoder passwordEncoder, SecureTokenService tokens, SensitiveValueProtector valueProtector) {
+  public DevelopmentEmployeeSeedInitializer(AppProperties properties, EmployeeRepository employees, Normalizer normalizer, PasswordEncoder passwordEncoder, SecureTokenService tokens, SensitiveValueProtector valueProtector, Environment environment) {
     this.properties = properties;
     this.employees = employees;
     this.normalizer = normalizer;
     this.passwordEncoder = passwordEncoder;
     this.tokens = tokens;
     this.valueProtector = valueProtector;
+    this.environment = environment;
   }
 
   @Override
   @Transactional
   public void run(ApplicationArguments args) {
-    if (!properties.developmentSeed().enabled()) return;
+    if (!properties.developmentSeed().enabled() || !isDevProfile()) return;
     removeStaleSeedEmployees();
     SEED_EMPLOYEES.forEach(this::upsert);
   }
@@ -84,7 +88,7 @@ public class DevelopmentEmployeeSeedInitializer implements ApplicationRunner {
     employee.setPreferredName(seed.name());
     employee.setNormalizedEmail(email);
     employee.setNormalizedPhone(normalizer.phone(seed.phone()));
-    if (employee.getPasswordHash() == null || employee.getPasswordHash().isBlank() || seed.email().startsWith("test_admin@")) {
+    if (passwordNeedsReconciliation(employee, seed)) {
       employee.setPasswordHash(passwordEncoder.encode(seed.password()));
     }
     employee.setToastPinHash(tokens.hash(seed.toastPin()));
@@ -94,6 +98,16 @@ public class DevelopmentEmployeeSeedInitializer implements ApplicationRunner {
     employee.setPositions(seed.positions());
     employee.setStatus(EmployeeStatus.ACTIVE);
     employees.save(employee);
+  }
+
+  private boolean isDevProfile() {
+    return Arrays.stream(environment.getActiveProfiles()).anyMatch(profile -> profile.equalsIgnoreCase("dev"));
+  }
+
+  private boolean passwordNeedsReconciliation(Employee employee, SeedEmployee seed) {
+    return employee.getPasswordHash() == null
+        || employee.getPasswordHash().isBlank()
+        || !passwordEncoder.matches(seed.password(), employee.getPasswordHash());
   }
 
   public static List<String> seedEmails() {

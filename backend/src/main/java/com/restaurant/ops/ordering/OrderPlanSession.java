@@ -3,6 +3,7 @@ package com.restaurant.ops.ordering;
 import com.restaurant.ops.employee.Employee;
 import com.restaurant.ops.employee.StoreCode;
 import com.restaurant.ops.ordering.OrderingEnums.OrderPlanStatus;
+import com.restaurant.ops.ordering.OrderingEnums.OrderBusiness;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -30,11 +31,14 @@ public class OrderPlanSession {
   @Column(name = "location_code", nullable = false)
   private StoreCode locationCode;
 
-  @ManyToOne(optional = false)
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  private OrderBusiness orderBusiness = OrderBusiness.BIANGBIANG_FRONT;
+
+  @ManyToOne
   @JoinColumn(name = "source_inventory_session_id")
   private InventoryCountSession sourceInventorySession;
 
-  @Column(nullable = false)
   private LocalDate inventoryBusinessDate;
 
   @ManyToOne
@@ -83,6 +87,22 @@ public class OrderPlanSession {
   private Instant submittedAt;
 
   @ManyToOne
+  @JoinColumn(name = "last_modified_by_employee_id")
+  private Employee lastModifiedBy;
+
+  private String lastModifiedByNameSnapshot;
+
+  @ManyToOne
+  @JoinColumn(name = "reviewed_by_employee_id")
+  private Employee reviewedBy;
+
+  private String reviewedByNameSnapshot;
+  private Instant reviewedAt;
+
+  @Column(columnDefinition = "TEXT")
+  private String reviewNote;
+
+  @ManyToOne
   @JoinColumn(name = "completed_by_employee_id")
   private Employee completedBy;
 
@@ -118,6 +138,8 @@ public class OrderPlanSession {
   public Long getId() { return id; }
   public StoreCode getLocationCode() { return locationCode; }
   public void setLocationCode(StoreCode locationCode) { this.locationCode = locationCode; }
+  public OrderBusiness getOrderBusiness() { return orderBusiness; }
+  public void setOrderBusiness(OrderBusiness orderBusiness) { this.orderBusiness = orderBusiness; }
   public InventoryCountSession getSourceInventorySession() { return sourceInventorySession; }
   public void setSourceInventorySession(InventoryCountSession sourceInventorySession) { this.sourceInventorySession = sourceInventorySession; }
   public LocalDate getInventoryBusinessDate() { return inventoryBusinessDate; }
@@ -152,6 +174,18 @@ public class OrderPlanSession {
   public void setSubmittedByNameSnapshot(String submittedByNameSnapshot) { this.submittedByNameSnapshot = submittedByNameSnapshot; }
   public Instant getSubmittedAt() { return submittedAt; }
   public void setSubmittedAt(Instant submittedAt) { this.submittedAt = submittedAt; }
+  public Employee getLastModifiedBy() { return lastModifiedBy; }
+  public void setLastModifiedBy(Employee lastModifiedBy) { this.lastModifiedBy = lastModifiedBy; }
+  public String getLastModifiedByNameSnapshot() { return lastModifiedByNameSnapshot; }
+  public void setLastModifiedByNameSnapshot(String lastModifiedByNameSnapshot) { this.lastModifiedByNameSnapshot = lastModifiedByNameSnapshot; }
+  public Employee getReviewedBy() { return reviewedBy; }
+  public void setReviewedBy(Employee reviewedBy) { this.reviewedBy = reviewedBy; }
+  public String getReviewedByNameSnapshot() { return reviewedByNameSnapshot; }
+  public void setReviewedByNameSnapshot(String reviewedByNameSnapshot) { this.reviewedByNameSnapshot = reviewedByNameSnapshot; }
+  public Instant getReviewedAt() { return reviewedAt; }
+  public void setReviewedAt(Instant reviewedAt) { this.reviewedAt = reviewedAt; }
+  public String getReviewNote() { return reviewNote; }
+  public void setReviewNote(String reviewNote) { this.reviewNote = reviewNote; }
   public Employee getCompletedBy() { return completedBy; }
   public void setCompletedBy(Employee completedBy) { this.completedBy = completedBy; }
   public String getCompletedByNameSnapshot() { return completedByNameSnapshot; }

@@ -1,7 +1,11 @@
 package com.restaurant.ops;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.restaurant.ops.auth.AuthDtos;
+import com.restaurant.ops.auth.AuthService;
+import com.restaurant.ops.common.ApiException;
 import com.restaurant.ops.config.DevelopmentEmployeeSeedInitializer;
 import com.restaurant.ops.employee.Employee;
 import com.restaurant.ops.employee.EmployeeRepository;
@@ -18,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
@@ -25,6 +30,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest
+@ActiveProfiles("dev")
 @Testcontainers
 class DevelopmentEmployeeSeedMySqlIntegrationTest {
   @Container
@@ -49,6 +55,7 @@ class DevelopmentEmployeeSeedMySqlIntegrationTest {
   @Autowired SecureTokenService tokens;
   @Autowired SensitiveValueProtector valueProtector;
   @Autowired PasswordEncoder passwordEncoder;
+  @Autowired AuthService authService;
 
   @Test
   void developmentSeedCreatesRevisedNineteenEmployeesAndIsIdempotent() throws Exception {
@@ -75,6 +82,47 @@ class DevelopmentEmployeeSeedMySqlIntegrationTest {
     assertThat(employees.findByNormalizedEmail("old-seed@dev.example.com")).isEmpty();
     assertThat(employees.findByNormalizedEmail("outside@example.com")).isPresent();
     assertSeededEmployees();
+  }
+
+  @Test
+  void developmentSeedRepairsExistingAlexCredentialsStatusRolesAndHomeStore() throws Exception {
+    seedInitializer.run(new DefaultApplicationArguments());
+    Employee alex = employees.findByNormalizedEmail("alex@dev.example.com").orElseThrow();
+    alex.setEnglishName("Old Alex");
+    alex.setPreferredName("Old Alex");
+    alex.setNormalizedPhone("+12065559999");
+    alex.setPasswordHash(passwordEncoder.encode("wrong-password"));
+    alex.setHomeStore(StoreCode.REDMOND);
+    alex.setEligibleStores(Set.of(StoreCode.REDMOND));
+    alex.setPositions(Set.of(Position.HOST));
+    alex.setStatus(EmployeeStatus.DEACTIVATED);
+    employees.save(alex);
+
+    seedInitializer.run(new DefaultApplicationArguments());
+
+    Employee repaired = employees.findByNormalizedEmail("alex@dev.example.com").orElseThrow();
+    assertThat(repaired.getEnglishName()).isEqualTo("Alex");
+    assertThat(repaired.getPreferredName()).isEqualTo("Alex");
+    assertThat(repaired.getNormalizedPhone()).isEqualTo("+12065550101");
+    assertThat(passwordEncoder.matches("password123", repaired.getPasswordHash())).isTrue();
+    assertThat(repaired.getStatus()).isEqualTo(EmployeeStatus.ACTIVE);
+    assertThat(repaired.getPositions()).containsExactly(Position.MANAGER);
+    assertThat(authorization.isBusinessPartner(repaired)).isTrue();
+    assertThat(repaired.getHomeStore()).isEqualTo(StoreCode.SEATTLE);
+    assertThat(repaired.getEligibleStores()).containsExactlyInAnyOrder(EnumSet.allOf(StoreCode.class).toArray(StoreCode[]::new));
+  }
+
+  @Test
+  void alexCanLoginWithDevelopmentPasswordAndWrongPasswordIsRejected() throws Exception {
+    seedInitializer.run(new DefaultApplicationArguments());
+
+    AuthDtos.TokenResponse tokens = authService.login(new AuthDtos.LoginRequest("alex@dev.example.com", "password123"));
+
+    assertThat(tokens.accessToken()).isNotBlank();
+    assertThat(tokens.refreshToken()).isNotBlank();
+    assertThatThrownBy(() -> authService.login(new AuthDtos.LoginRequest("alex@dev.example.com", "wrong-password")))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("AUTH_INVALID_CREDENTIALS");
   }
 
   private void assertSeededEmployees() {
@@ -114,6 +162,8 @@ class DevelopmentEmployeeSeedMySqlIntegrationTest {
     assertThat(sia.getPositions()).containsExactly(Position.OWNER);
 
     assertThat(testAdmin.getPositions()).containsExactly(Position.OWNER);
+    assertThat(passwordEncoder.matches("Test1234!", testAdmin.getPasswordHash())).isTrue();
+    assertThat(passwordEncoder.matches("password123", alex.getPasswordHash())).isTrue();
 
     for (Employee businessPartner : java.util.List.of(alex, mini, yumi, alison, sia, testAdmin)) {
       assertThat(businessPartner.getPositions()).allSatisfy(position -> assertThat(position.permissionGroup()).isEqualTo(Position.PermissionGroup.BUSINESS_PARTNER));

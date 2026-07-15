@@ -29,6 +29,8 @@ import com.restaurant.ops.ordering.OrderingDtos.ReceiveOrderRequest;
 import com.restaurant.ops.ordering.OrderingDtos.RejectOrderRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpdateInventoryCatalogItemRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderCatalogItemRequest;
+import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderPlanAmountRequest;
+import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderPlanAmountsRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertInventoryLineRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertInventoryLinesRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertOrderPlanLineRequest;
@@ -164,7 +166,7 @@ class OrderingMySqlIntegrationTest {
           assertThat(product.getName()).isEqualTo("Ming River");
         })
         .anySatisfy(product -> {
-          assertThat(product.getName()).isEqualTo("Glove Black (S/M/L)");
+          assertThat(product.getName()).isEqualTo("Glove Black (S, M, L)");
         });
     assertThat(first.ambiguities()).anyMatch(value -> value.contains("Page 4 has no visible vendor heading"));
   }
@@ -213,7 +215,7 @@ class OrderingMySqlIntegrationTest {
     assertThat(allInventoryIds.indexOf(paperFanCount.getId())).isLessThan(allInventoryIds.indexOf(frontCount.getId()));
 
     String pdfText = new String(ordering.inventoryCountPdf(manager, frontCount.getId()), StandardCharsets.ISO_8859_1);
-    assertThat(pdfText).contains("Inventory Count", "Business:", "BiangBiang Front", "Vendor", "ITEM", "Qt.", "Unit", "JINRO SOJU Original", "BOTTLE");
+    assertThat(pdfText).contains("Inventory Count", "Business:", "BiangBiang Front", "Vendor", "ITEM", "Qty.", "Unit", "JINRO SOJU Original", "BOTTLE");
     assertThat(pdfText).doesNotContain("Milk tea Cup", "Fen Chiew", "Paper Fan");
 
     assertThatThrownBy(() -> ordering.upsertInventoryLines(counter, frontCountId, new UpsertInventoryLinesRequest(List.of(new UpsertInventoryLineRequest(paperFan.getId(), BigDecimal.ONE, CatalogUnit.OTHER, null)))))
@@ -224,6 +226,67 @@ class OrderingMySqlIntegrationTest {
     assertThatThrownBy(() -> ordering.upsertInventoryLines(counter, newFrontCount.getId(), new UpsertInventoryLinesRequest(List.of(new UpsertInventoryLineRequest(paperFan.getId(), BigDecimal.ONE, CatalogUnit.OTHER, null)))))
         .isInstanceOf(ApiException.class)
         .hasMessage("INVENTORY_PRODUCT_BUSINESS_MISMATCH");
+  }
+
+  @Test
+  void latestOrderCatalogMigrationSeedsOrderProductsWithoutDuplicatesAndSupportsSessionPdf() {
+    Employee orderer = employee("latest-order-catalog@example.com", Position.HOST, StoreCode.SEATTLE, "7059");
+
+    assertThat(vendors.findByLocationCodeOrderByDisplayOrderAscNameAsc(StoreCode.SEATTLE))
+        .filteredOn(vendor -> List.of("Wellpack", "JFC", "CO-HO", "Southern Glazer's", "Costco", "GIC", "Sysco", "No Delivery").contains(vendor.getName()))
+        .extracting(Vendor::getName)
+        .containsExactlyInAnyOrder("Wellpack", "JFC", "CO-HO", "Southern Glazer's", "Costco", "GIC", "Sysco", "No Delivery");
+    assertThat(vendors.findByLocationCodeOrderByDisplayOrderAscNameAsc(StoreCode.SEATTLE))
+        .filteredOn(vendor -> vendor.getNormalizedName().equals("wellpack"))
+        .hasSize(1);
+
+    assertVendorContains("Wellpack", List.of("l32b black (dry mix)", "milk tea lid (iced)", "sbp240 round 8oz. (rice)"));
+    assertVendorContains("JFC", List.of("sapporo beer"));
+    assertVendorContains("CO-HO", List.of("jinro soju green grape", "taiwan gold medal beer"));
+    assertVendorContains("Southern Glazer's", List.of("vodka smirnoff", "rum bacardi", "jameson irish whiskey"));
+    assertVendorContains("Costco", List.of("coke", "diet coke", "sprite", "perrier sparkling water", "ginger beer"));
+    assertVendorContains("GIC", List.of("lychee fruit can", "coconut milk can", "thai tea"));
+    assertVendorContains("Sysco", List.of("mint leaf", "glove black (s, m, l)", "lemon fruit", "lime juice", "lemon juice"));
+    assertVendorContains("No Delivery", List.of("mango puree can", "clorox / lysol wipes", "milk tea crema", "topo chico", "monin rose syrup"));
+
+    assertThat(orderProductsForVendor("Sysco")).filteredOn(product -> product.getNormalizedName().equals("lemon fruit")).hasSize(1);
+    assertThat(orderProductsForVendor("No Delivery")).filteredOn(product -> product.getNormalizedName().equals("topo chico")).hasSize(1);
+    assertThat(orderProductsForVendor("Southern Glazer's")).filteredOn(product -> product.getNormalizedName().equals("vodka smirnoff")).hasSize(1);
+    assertThat(orderProductsForVendor("Southern Glazer's")).filteredOn(product -> product.getNormalizedName().equals("volka smiroff")).isEmpty();
+
+    assertThat(catalogProduct("CO-HO", "jinro soju green grape").getOrderUnit()).isEqualTo(CatalogUnit.BOTTLE);
+    assertThat(catalogProduct("Sysco", "lemon fruit").getOrderUnit()).isEqualTo(CatalogUnit.COUNT);
+    assertThat(catalogProduct("JFC", "sapporo beer").getOrderUnit()).isEqualTo(CatalogUnit.CASE);
+    assertThat(catalogProduct("Southern Glazer's", "vodka smirnoff").getOrderUnit()).isEqualTo(CatalogUnit.CASE);
+    assertThat(catalogProduct("Sysco", "lemon fruit").getName()).isEqualTo("Lemon Fruit");
+    assertThat(catalogProduct("Sysco", "lime juice").getName()).isEqualTo("Lime Juice");
+
+    assertThat(catalogProduct("Wellpack", "milk tea cup (iced)").getInventoryBusiness()).isNull();
+    assertThat(catalogProduct("Sysco", "lemon fruit").getInventoryBusiness()).isNull();
+    assertThat(ordering.listProducts(orderer, StoreCode.SEATTLE, null, null, InventoryBusiness.BIANGBIANG_FRONT, null, true))
+        .extracting(OrderCatalogProduct::getName)
+        .doesNotContain("Milk Tea Cup (Iced)", "Lemon Fruit");
+
+    assertThat(ordering.listProducts(orderer, StoreCode.SEATTLE, null, null, null, OrderBusiness.BIANGBIANG_FRONT, null, true))
+        .extracting(OrderCatalogProduct::getName)
+        .contains("Milk Tea Cup (Iced)", "JINRO SOJU Green Grape", "Vodka Smirnoff", "Lemon Fruit", "Topo Chico");
+
+    OrderCatalogProduct lemon = catalogProduct("Sysco", "lemon fruit");
+    OrderCatalogProduct smirnoff = catalogProduct("Southern Glazer's", "vodka smirnoff");
+    OrderPlanSession plan = ordering.createOrderPlan(orderer, new CreateOrderPlanRequest(StoreCode.SEATTLE, null, LocalDate.of(2026, 8, 1), null, null, null, "latest order catalog"));
+    assertThat(planLines.findByOrderPlanSessionIdOrderByVendorDisplayOrderAscVendorNameSnapshotAscProductDisplayOrderAscProductNameSnapshotAsc(plan.getId()))
+        .extracting(OrderPlanLine::getProductNameSnapshot)
+        .contains("Lemon Fruit", "Vodka Smirnoff", "Milk Tea Cup (Iced)");
+
+    plan = ordering.upsertOrderPlanLines(orderer, plan.getId(), new UpsertOrderPlanLinesRequest(List.of(
+        new UpsertOrderPlanLineRequest(catalogProduct("Wellpack", "milk tea cup (iced)").getId(), BigDecimal.ZERO, "zero is allowed"),
+        new UpsertOrderPlanLineRequest(lemon.getId(), BigDecimal.ONE, "latest produce"),
+        new UpsertOrderPlanLineRequest(smirnoff.getId(), new BigDecimal("2"), "latest product")
+    )));
+    plan = ordering.submitOrderPlan(orderer, plan.getId());
+
+    String pdfText = new String(ordering.currentOrderPlanPdf(orderer, plan.getId()).getContent(), StandardCharsets.ISO_8859_1);
+    assertThat(pdfText).contains("Order Session", "Lemon Fruit", "Vodka Smirnoff", "Southern Glazer's", "Sysco");
   }
 
   @Test
@@ -305,7 +368,7 @@ class OrderingMySqlIntegrationTest {
     assertThat(ordering.listProducts(alex, StoreCode.SEATTLE, null, null, null, null, true))
         .filteredOn(product -> product.getInventoryBusiness() == null)
         .extracting(OrderCatalogProduct::getName)
-        .contains("Milk tea Cup (Iced)");
+        .contains("Milk Tea Cup (Iced)");
   }
 
   @Test
@@ -556,7 +619,7 @@ class OrderingMySqlIntegrationTest {
 
   @Test
   void flywayAndInventoryLifecycleRejectIllegalTransitionsWithoutImplicitOrdering() {
-    assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("9");
+    assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("13");
 
     Employee counter = employee("counter-lifecycle@example.com", Position.HOST, StoreCode.SEATTLE, "7401");
     Employee manager = employee("manager-lifecycle@example.com", Position.MANAGER, StoreCode.SEATTLE, "7402");
@@ -711,14 +774,15 @@ class OrderingMySqlIntegrationTest {
     ))))
         .isInstanceOf(ApiException.class)
         .hasMessage("ORDER_PLAN_NOT_EDITABLE");
-    plan = ordering.completeOrderPlan(manager, plan.getId());
-    assertThat(plan.getStatus()).isEqualTo(OrderPlanStatus.COMPLETED);
-    var completedPlan = plan;
-    assertThatThrownBy(() -> ordering.submitOrderPlan(orderer, completedPlan.getId()))
+    assertThatThrownBy(() -> ordering.completeOrderPlan(manager, submittedPlanId))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
+    assertThatThrownBy(() -> ordering.submitOrderPlan(orderer, submittedPlanId))
         .isInstanceOf(ApiException.class)
         .hasMessage("ORDER_PLAN_NOT_SUBMITTABLE");
     assertThat(ordering.auditEvents("ORDER_PLAN", plan.getId())).extracting(OrderAuditEvent::getAction)
-        .contains("ORDER_PLAN_CREATED", "SOURCE_INVENTORY_SELECTED", "SUGGESTED_QUANTITY_GENERATED", "ORDER_PLAN_STARTED", "FINAL_QUANTITY_OVERRIDDEN", "VENDOR_ORDERS_GENERATED", "ORDER_PLAN_SUBMITTED", "ORDER_PLAN_COMPLETED");
+        .contains("ORDER_PLAN_CREATED", "SOURCE_INVENTORY_SELECTED", "SUGGESTED_QUANTITY_GENERATED", "ORDER_PLAN_STARTED", "FINAL_QUANTITY_OVERRIDDEN", "VENDOR_ORDERS_GENERATED", "ORDER_PLAN_SUBMITTED")
+        .doesNotContain("ORDER_PLAN_COMPLETED", "ORDER_PLAN_APPROVED", "ORDER_PLAN_REJECTED");
 
     assertThatThrownBy(() -> ordering.overrideInventory(manager, submittedCountId, new InventoryTransitionRequest(null)))
         .isInstanceOf(ApiException.class)
@@ -843,15 +907,17 @@ class OrderingMySqlIntegrationTest {
     assertThat(plan.getAssignedOrderer().getId()).isEqualTo(assignedOrderer.getId());
     assertThat(ordering.listOrderPlans(operator, StoreCode.SEATTLE, null)).extracting(OrderPlanSession::getId).contains(plan.getId());
 
-    plan = ordering.upsertOrderPlanLines(operator, plan.getId(), new UpsertOrderPlanLinesRequest(List.of(
-        new UpsertOrderPlanLineRequest(product.getId(), new BigDecimal("4"), "not assigned orderer")
+    Long ownedPlanId = plan.getId();
+    assertThatThrownBy(() -> ordering.upsertOrderPlanLines(operator, ownedPlanId, new UpsertOrderPlanLinesRequest(List.of(
+        new UpsertOrderPlanLineRequest(product.getId(), new BigDecimal("4"), "not owner")
+    )))).isInstanceOf(ApiException.class).hasMessage("ORDER_SESSION_NOT_OWNED");
+    plan = ordering.upsertOrderPlanLines(creator, plan.getId(), new UpsertOrderPlanLinesRequest(List.of(
+        new UpsertOrderPlanLineRequest(product.getId(), new BigDecimal("4"), "owner edit")
     )));
     assertThat(plan.getStatus()).isEqualTo(OrderPlanStatus.IN_PROGRESS);
     assertThat(planLines.findByOrderPlanSessionIdOrderByVendorDisplayOrderAscVendorNameSnapshotAscProductDisplayOrderAscProductNameSnapshotAsc(plan.getId()))
-        .filteredOn(line -> line.getProduct().getId().equals(product.getId()))
-        .singleElement()
-        .satisfies(line -> {
-          assertThat(line.getUpdatedBy().getId()).isEqualTo(operator.getId());
+        .filteredOn(line -> line.getProduct().getId().equals(product.getId())).singleElement().satisfies(line -> {
+          assertThat(line.getUpdatedBy().getId()).isEqualTo(creator.getId());
           assertThat(line.getSuggestedOrderQuantity()).isEqualByComparingTo("4");
           assertThat(line.getFinalOrderQuantity()).isEqualByComparingTo("4");
         });
@@ -873,20 +939,22 @@ class OrderingMySqlIntegrationTest {
         new UpsertOrderPlanLineRequest(product.getId(), new BigDecimal("5"), "submitted edit")
     ))))
         .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_EDITABLE");
+        .hasMessage("ORDER_SESSION_NOT_OWNED");
     assertThatThrownBy(() -> ordering.completeOrderPlan(operator, planId))
         .isInstanceOf(ApiException.class)
-        .hasMessage("AUTH_BUSINESS_PARTNER_REQUIRED");
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
     assertThatThrownBy(() -> ordering.completeOrderPlan(shiftLeader, planId))
         .isInstanceOf(ApiException.class)
-        .hasMessage("AUTH_BUSINESS_PARTNER_REQUIRED");
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
 
     count = ordering.reviewInventory(manager, count.getId());
     assertThat(count.getStatus()).isEqualTo(InventoryCountStatus.REVIEWED);
     count = ordering.lockInventory(manager, count.getId());
     assertThat(count.getStatus()).isEqualTo(InventoryCountStatus.LOCKED);
-    plan = ordering.completeOrderPlan(manager, plan.getId());
-    assertThat(plan.getStatus()).isEqualTo(OrderPlanStatus.COMPLETED);
+    assertThatThrownBy(() -> ordering.completeOrderPlan(manager, planId))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
+    assertThat(orderPlans.findById(planId).orElseThrow().getStatus()).isEqualTo(OrderPlanStatus.SUBMITTED);
   }
 
   @Test
@@ -993,18 +1061,13 @@ class OrderingMySqlIntegrationTest {
   }
 
   @Test
-  void businessPartnersApproveAndRejectSubmittedOrderPlansWithDecisionGuards() {
+  void orderSessionApprovalEndpointsAreDisabledAndManagersCanUpdateSubmittedAmounts() {
     Employee setupManager = employee("setup-order-plan-decision@example.com", Position.MANAGER, StoreCode.SEATTLE, "7901");
     Employee submitter = employee("submitter-order-plan-decision@example.com", Position.HOST, StoreCode.SEATTLE, "7902");
     Employee planCreator = employee("creator-order-plan-decision@example.com", Position.FOOD_RUNNER, StoreCode.SEATTLE, "7903");
-    Employee approver = employee("approver-order-plan-decision@example.com", Position.MANAGER, StoreCode.SEATTLE, "7904");
-    approver.setPreferredName("Decision Approver");
-    employees.save(approver);
-    Employee rejecter = employee("rejecter-order-plan-decision@example.com", Position.FINANCIAL_MANAGER, StoreCode.SEATTLE, "7905");
-    rejecter.setPreferredName("Decision Rejecter");
-    employees.save(rejecter);
-    Employee ownerSubmitter = employee("owner-submitter-order-plan-decision@example.com", Position.OWNER, StoreCode.SEATTLE, "7906");
-    Employee shiftLeader = employee("shift-order-plan-decision@example.com", Position.SHIFT_LEADER, StoreCode.SEATTLE, "7907");
+    Employee manager = employee("approver-order-plan-decision@example.com", Position.MANAGER, StoreCode.SEATTLE, "7904");
+    manager.setPreferredName("Decision Manager");
+    employees.save(manager);
     Employee ordinary = employee("ordinary-order-plan-decision@example.com", Position.BARTENDER, StoreCode.SEATTLE, "7908");
     Employee redmondManager = employee("redmond-manager-order-plan-decision@example.com", Position.MANAGER, StoreCode.REDMOND, "7909");
     Employee inactiveManager = employee("inactive-manager-order-plan-decision@example.com", Position.MANAGER, StoreCode.SEATTLE, "7910");
@@ -1014,133 +1077,100 @@ class OrderingMySqlIntegrationTest {
     assertThat(recordComponentNames(RejectOrderRequest.class))
         .containsExactly("reason")
         .doesNotContain("rejectedByEmployeeId", "rejectedByName", "rejectedByNameSnapshot", "rejectedAt", "approvedByEmployeeId", "approvedByName", "approvedAt");
+    assertThat(recordComponentNames(UpdateOrderPlanAmountsRequest.class)).containsExactly("lines");
+    assertThat(recordComponentNames(UpdateOrderPlanAmountRequest.class)).containsExactly("lineId", "finalOrderQuantity", "notes");
 
     Vendor vendor = ordering.saveVendor(setupManager, new VendorRequest(StoreCode.SEATTLE, "Decision Vendor", "DEC", null, null, null, null, Set.of(), null, null, true, 1), null);
     OrderCatalogProduct product = ordering.saveProduct(setupManager, new ProductRequest(StoreCode.SEATTLE, vendor.getId(), "DEC-1", "Decision Product", null, CatalogCategory.DRY_GOODS, null, CatalogUnit.CASE, null, CatalogUnit.CASE, null, "case", new BigDecimal("8.00"), "USD", new BigDecimal("3"), null, null, true, 1, null), null);
 
-    var approvalPlan = submittedOrderPlan(planCreator, submitter, setupManager, product, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 2));
-    approvalPlan = ordering.approveOrderPlan(approver, approvalPlan.getId());
-    assertThat(approvalPlan.getStatus()).isEqualTo(OrderPlanStatus.COMPLETED);
-    assertThat(approvalPlan.getCompletedBy().getId()).isEqualTo(approver.getId());
-    assertThat(approvalPlan.getCompletedByNameSnapshot()).isEqualTo("Decision Approver");
-    assertThat(approvalPlan.getCompletedAt()).isNotNull();
-    assertThat(ordering.auditEvents("ORDER_PLAN", approvalPlan.getId())).extracting(OrderAuditEvent::getAction)
-        .contains("ORDER_PLAN_APPROVED", "ORDER_PLAN_COMPLETED");
+    var plan = submittedOrderPlanWithLine(planCreator, submitter, setupManager, product, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 2), BigDecimal.ONE, new BigDecimal("4"));
+    Long planId = plan.getId();
+    Long lineId = ordering.orderPlanLines(planId).getFirst().getId();
+    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(planId)).hasSize(1);
 
-    var rejectionPlan = submittedOrderPlan(planCreator, submitter, setupManager, product, LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 4));
-    rejectionPlan = ordering.rejectOrderPlan(rejecter, rejectionPlan.getId(), new RejectOrderRequest("Quantity requires correction"));
-    assertThat(rejectionPlan.getStatus()).isEqualTo(OrderPlanStatus.REJECTED);
-    assertThat(rejectionPlan.getRejectedBy().getId()).isEqualTo(rejecter.getId());
-    assertThat(rejectionPlan.getRejectedByNameSnapshot()).isEqualTo("Decision Rejecter");
-    assertThat(rejectionPlan.getRejectedAt()).isNotNull();
-    assertThat(rejectionPlan.getRejectionReason()).isEqualTo("Quantity requires correction");
-
-    approver.setPreferredName("Renamed Decision Approver");
-    approver.setStatus(EmployeeStatus.DEACTIVATED);
-    employees.save(approver);
-    rejecter.setPreferredName("Renamed Decision Rejecter");
-    rejecter.setStatus(EmployeeStatus.DEACTIVATED);
-    employees.save(rejecter);
-    assertThat(orderPlans.findById(approvalPlan.getId()).orElseThrow().getCompletedByNameSnapshot()).isEqualTo("Decision Approver");
-    assertThat(orderPlans.findById(rejectionPlan.getId()).orElseThrow().getRejectedByNameSnapshot()).isEqualTo("Decision Rejecter");
-
-    var selfApprovePlan = submittedOrderPlan(planCreator, ownerSubmitter, setupManager, product, LocalDate.of(2026, 8, 5), LocalDate.of(2026, 8, 6));
-    assertThatThrownBy(() -> ordering.approveOrderPlan(ownerSubmitter, selfApprovePlan.getId()))
+    assertThatThrownBy(() -> ordering.approveOrderPlan(manager, planId))
         .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_SELF_DECISION_FORBIDDEN");
-    assertThatThrownBy(() -> ordering.completeOrderPlan(ownerSubmitter, selfApprovePlan.getId()))
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
+    assertThatThrownBy(() -> ordering.rejectOrderPlan(manager, planId, new RejectOrderRequest("return disabled")))
         .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_SELF_DECISION_FORBIDDEN");
-    var selfRejectPlan = submittedOrderPlan(planCreator, ownerSubmitter, setupManager, product, LocalDate.of(2026, 8, 7), LocalDate.of(2026, 8, 8));
-    assertThatThrownBy(() -> ordering.rejectOrderPlan(ownerSubmitter, selfRejectPlan.getId(), new RejectOrderRequest("self reject")))
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
+    assertThatThrownBy(() -> ordering.completeOrderPlan(manager, planId))
         .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_SELF_DECISION_FORBIDDEN");
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
 
-    var rolePlan = submittedOrderPlan(planCreator, submitter, setupManager, product, LocalDate.of(2026, 8, 9), LocalDate.of(2026, 8, 10));
-    assertThatThrownBy(() -> ordering.approveOrderPlan(shiftLeader, rolePlan.getId()))
+    assertThatThrownBy(() -> ordering.updateSubmittedOrderPlanAmounts(ordinary, planId, new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(lineId, BigDecimal.ZERO, "ordinary")))))
         .isInstanceOf(ApiException.class)
         .hasMessage("AUTH_BUSINESS_PARTNER_REQUIRED");
-    assertThatThrownBy(() -> ordering.rejectOrderPlan(ordinary, rolePlan.getId(), new RejectOrderRequest("ordinary reject")))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("AUTH_BUSINESS_PARTNER_REQUIRED");
-    assertThatThrownBy(() -> ordering.approveOrderPlan(redmondManager, rolePlan.getId()))
+    assertThatThrownBy(() -> ordering.updateSubmittedOrderPlanAmounts(redmondManager, planId, new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(lineId, BigDecimal.ZERO, "wrong store")))))
         .isInstanceOf(ApiException.class)
         .hasMessage("AUTH_STORE_REQUIRED");
-    assertThatThrownBy(() -> ordering.rejectOrderPlan(inactiveManager, rolePlan.getId(), new RejectOrderRequest("inactive reject")))
+    assertThatThrownBy(() -> ordering.updateSubmittedOrderPlanAmounts(inactiveManager, planId, new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(lineId, BigDecimal.ZERO, "inactive")))))
         .isInstanceOf(ApiException.class)
         .hasMessage("AUTH_ACTIVE_EMPLOYEE_REQUIRED");
+    assertThatThrownBy(() -> ordering.updateSubmittedOrderPlanAmounts(manager, planId, new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(999999L, BigDecimal.ZERO, "wrong line")))))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("ORDER_PLAN_LINE_MISMATCH");
 
+    plan = ordering.updateSubmittedOrderPlanAmounts(manager, planId, new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(lineId, BigDecimal.ZERO, "zero is allowed"))));
+    assertThat(plan.getStatus()).isEqualTo(OrderPlanStatus.SUBMITTED);
+    assertThat(plan.getLastModifiedBy().getId()).isEqualTo(manager.getId());
+    assertThat(plan.getLastModifiedByNameSnapshot()).isEqualTo("Decision Manager");
+    assertThat(plan.getUpdatedAt()).isNotNull();
+    assertThat(ordering.orderPlanLines(planId)).filteredOn(line -> line.getId().equals(lineId)).singleElement().satisfies(line -> {
+      assertThat(line.getFinalOrderQuantity()).isEqualByComparingTo("0");
+      assertThat(line.getUpdatedBy().getId()).isEqualTo(manager.getId());
+    });
+    assertThat(ordering.auditEvents("ORDER_PLAN", planId)).extracting(OrderAuditEvent::getAction)
+        .contains("ORDER_PLAN_SUBMITTED", "ORDER_SESSION_AMOUNTS_UPDATED")
+        .doesNotContain("ORDER_PLAN_APPROVED", "ORDER_PLAN_REJECTED", "ORDER_PLAN_COMPLETED");
+    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(planId))
+        .hasSize(2)
+        .anySatisfy(pdf -> assertThat(pdf.isCurrentVersion()).isFalse())
+        .anySatisfy(pdf -> {
+          assertThat(pdf.getVersionNumber()).isEqualTo(2);
+          assertThat(pdf.isCurrentVersion()).isTrue();
+          assertThat(pdf.getGeneratedBy().getId()).isEqualTo(manager.getId());
+        });
+
+    assertThatThrownBy(() -> ordering.submitOrderPlan(submitter, planId))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("ORDER_PLAN_NOT_SUBMITTABLE");
     var draftPlan = ordering.createOrderPlan(planCreator, new CreateOrderPlanRequest(StoreCode.SEATTLE, eligibleInventory(planCreator, setupManager, product, LocalDate.of(2026, 8, 11), BigDecimal.ONE, false, false).getId(), LocalDate.of(2026, 8, 12), null, null, null, "draft decision"));
-    assertThatThrownBy(() -> ordering.approveOrderPlan(setupManager, draftPlan.getId()))
+    assertThatThrownBy(() -> ordering.updateSubmittedOrderPlanAmounts(manager, draftPlan.getId(), new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(ordering.orderPlanLines(draftPlan.getId()).getFirst().getId(), BigDecimal.ONE, "draft")))))
         .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_APPROVABLE");
-    assertThatThrownBy(() -> ordering.rejectOrderPlan(setupManager, draftPlan.getId(), new RejectOrderRequest("draft reject")))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_REJECTABLE");
-
-    Long approvedPlanId = approvalPlan.getId();
-    assertThatThrownBy(() -> ordering.approveOrderPlan(setupManager, approvedPlanId))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_APPROVABLE");
-    assertThatThrownBy(() -> ordering.rejectOrderPlan(setupManager, approvedPlanId, new RejectOrderRequest("approved reject")))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_REJECTABLE");
-
-    Long rejectedPlanId = rejectionPlan.getId();
-    assertThatThrownBy(() -> ordering.rejectOrderPlan(setupManager, rejectedPlanId, new RejectOrderRequest("reject twice")))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_REJECTABLE");
-    assertThatThrownBy(() -> ordering.approveOrderPlan(setupManager, rejectedPlanId))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_APPROVABLE");
-
-    var cancelledPlan = ordering.createOrderPlan(planCreator, new CreateOrderPlanRequest(StoreCode.SEATTLE, eligibleInventory(planCreator, setupManager, product, LocalDate.of(2026, 8, 13), BigDecimal.ONE, false, false).getId(), LocalDate.of(2026, 8, 14), null, null, null, "cancel decision"));
-    cancelledPlan = ordering.cancelOrderPlan(planCreator, cancelledPlan.getId());
-    Long cancelledPlanId = cancelledPlan.getId();
-    assertThatThrownBy(() -> ordering.approveOrderPlan(setupManager, cancelledPlanId))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_APPROVABLE");
-    assertThatThrownBy(() -> ordering.rejectOrderPlan(setupManager, cancelledPlanId, new RejectOrderRequest("cancel reject")))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_REJECTABLE");
+        .hasMessage("ORDER_SESSION_NOT_EDITABLE");
   }
 
   @Test
-  void orderPlanApprovalPersistsImmutableVersionedPdfDocument() throws Exception {
+  void orderPlanSubmissionAndAmountUpdatesPersistVersionedPdfDocuments() throws Exception {
     Employee setupManager = employee("setup-order-plan-pdf@example.com", Position.MANAGER, StoreCode.SEATTLE, "7921");
     Employee creator = employee("creator-order-plan-pdf@example.com", Position.FOOD_RUNNER, StoreCode.SEATTLE, "7922");
     Employee submitter = employee("submitter-order-plan-pdf@example.com", Position.HOST, StoreCode.SEATTLE, "7923");
     submitter.setPreferredName("PDF Plan Submitter");
     employees.save(submitter);
-    Employee approver = employee("approver-order-plan-pdf@example.com", Position.FINANCIAL_MANAGER, StoreCode.SEATTLE, "7924");
-    approver.setPreferredName("PDF Plan Approver");
-    employees.save(approver);
-    Employee ownerSubmitter = employee("owner-submitter-order-plan-pdf@example.com", Position.OWNER, StoreCode.SEATTLE, "7925");
+    Employee editor = employee("approver-order-plan-pdf@example.com", Position.FINANCIAL_MANAGER, StoreCode.SEATTLE, "7924");
+    editor.setPreferredName("PDF Plan Editor");
+    employees.save(editor);
 
     Vendor vendor = ordering.saveVendor(setupManager, new VendorRequest(StoreCode.SEATTLE, "Order Plan PDF Vendor", "OPDF", null, null, null, null, Set.of(), null, null, true, 1), null);
     OrderCatalogProduct product = ordering.saveProduct(setupManager, new ProductRequest(StoreCode.SEATTLE, vendor.getId(), "OPDF-1", "Order Plan PDF Product With A Long Readable Name", null, CatalogCategory.DRY_GOODS, null, CatalogUnit.CASE, null, CatalogUnit.CASE, null, "case", new BigDecimal("12.50"), "USD", new BigDecimal("6"), null, null, true, 1, null), null);
 
     OrderPlanSession plan = submittedOrderPlanWithLine(creator, submitter, setupManager, product, LocalDate.of(2026, 8, 15), LocalDate.of(2026, 8, 16), new BigDecimal("2"), new BigDecimal("5"));
-    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(plan.getId())).isEmpty();
-
-    OrderPlanSession rejected = submittedOrderPlanWithLine(creator, submitter, setupManager, product, LocalDate.of(2026, 8, 17), LocalDate.of(2026, 8, 18), BigDecimal.ONE, BigDecimal.ONE);
-    ordering.rejectOrderPlan(approver, rejected.getId(), new RejectOrderRequest("not ready for PDF"));
-    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(rejected.getId())).isEmpty();
+    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(plan.getId())).hasSize(1);
 
     OrderPlanSession cancelled = ordering.createOrderPlan(creator, new CreateOrderPlanRequest(StoreCode.SEATTLE, eligibleInventory(creator, setupManager, product, LocalDate.of(2026, 8, 19), BigDecimal.ONE, false, false).getId(), LocalDate.of(2026, 8, 20), null, null, null, "cancel no pdf"));
     ordering.cancelOrderPlan(creator, cancelled.getId());
     assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(cancelled.getId())).isEmpty();
 
-    plan = ordering.approveOrderPlan(approver, plan.getId());
-    assertThat(plan.getStatus()).isEqualTo(OrderPlanStatus.COMPLETED);
+    assertThat(plan.getStatus()).isEqualTo(OrderPlanStatus.SUBMITTED);
     List<OrderPlanPdfDocument> versions = orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(plan.getId());
     assertThat(versions).hasSize(1);
     OrderPlanPdfDocument document = versions.getFirst();
     assertThat(document.getVersionNumber()).isEqualTo(1);
     assertThat(document.getMimeType()).isEqualTo("application/pdf");
-    assertThat(document.getFilename()).isEqualTo("order-plan-" + plan.getId() + "-v1.pdf");
-    assertThat(document.getGeneratedBy().getId()).isEqualTo(approver.getId());
-    assertThat(document.getGeneratedByNameSnapshot()).isEqualTo("PDF Plan Approver");
+    assertThat(document.getFilename()).isEqualTo("order-session-" + plan.getId() + "-v1.pdf");
+    assertThat(document.getGeneratedBy().getId()).isEqualTo(submitter.getId());
+    assertThat(document.getGeneratedByNameSnapshot()).isEqualTo("PDF Plan Submitter");
     assertThat(document.getGeneratedAt()).isNotNull();
     assertThat(document.isCurrentVersion()).isTrue();
     assertThat(document.getContent()).isNotEmpty();
@@ -1151,43 +1181,39 @@ class OrderingMySqlIntegrationTest {
     assertThat(pdfText).startsWith("%PDF-");
     assertThat(pdfText).contains("xref", "trailer", "%%EOF");
     assertThat(pdfText).contains(
-        "Order Plan",
-        "StoreCode: SEATTLE",
+        "Order",
+        "Location:",
         "PDF Plan Submitter",
-        "PDF Plan Approver",
         "Order Plan PDF Product With A Long Readable Name",
-        "Order Plan PDF Vendor",
-        "Suggested quantity",
-        "Final quantity",
-        "4",
+        "Vendor: Order Plan PDF Vendor",
+        "Qty.",
         "5",
-        "Total final quantity");
+        "Order Session ID");
 
     Long planId = plan.getId();
     assertThatThrownBy(() -> ordering.approveOrderPlan(setupManager, planId))
         .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_APPROVABLE");
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
     assertThatThrownBy(() -> ordering.completeOrderPlan(setupManager, planId))
         .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_NOT_APPROVABLE");
+        .hasMessage("ORDER_SESSION_APPROVAL_DISABLED");
     assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(planId)).hasSize(1);
 
-    OrderPlanSession completedViaLegacyEndpoint = submittedOrderPlanWithLine(creator, submitter, setupManager, product, LocalDate.of(2026, 8, 21), LocalDate.of(2026, 8, 22), BigDecimal.ZERO, new BigDecimal("3"));
-    completedViaLegacyEndpoint = ordering.completeOrderPlan(approver, completedViaLegacyEndpoint.getId());
-    assertThat(completedViaLegacyEndpoint.getStatus()).isEqualTo(OrderPlanStatus.COMPLETED);
-    Long legacyPlanId = completedViaLegacyEndpoint.getId();
-    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(legacyPlanId))
-        .singleElement()
-        .satisfies(pdf -> {
+    Long lineId = ordering.orderPlanLines(planId).getFirst().getId();
+    plan = ordering.updateSubmittedOrderPlanAmounts(editor, planId, new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(lineId, new BigDecimal("3"), "refresh pdf"))));
+    assertThat(plan.getStatus()).isEqualTo(OrderPlanStatus.SUBMITTED);
+    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(planId))
+        .hasSize(2)
+        .anySatisfy(pdf -> {
           assertThat(pdf.getVersionNumber()).isEqualTo(1);
-          assertThat(pdf.getFilename()).isEqualTo("order-plan-" + legacyPlanId + "-v1.pdf");
+          assertThat(pdf.isCurrentVersion()).isFalse();
+        })
+        .anySatisfy(pdf -> {
+          assertThat(pdf.getVersionNumber()).isEqualTo(2);
+          assertThat(pdf.getFilename()).isEqualTo("order-session-" + planId + "-v2.pdf");
+          assertThat(pdf.getGeneratedBy().getId()).isEqualTo(editor.getId());
+          assertThat(pdf.isCurrentVersion()).isTrue();
         });
-
-    OrderPlanSession selfApproval = submittedOrderPlanWithLine(creator, ownerSubmitter, setupManager, product, LocalDate.of(2026, 8, 23), LocalDate.of(2026, 8, 24), BigDecimal.ZERO, BigDecimal.ONE);
-    assertThatThrownBy(() -> ordering.approveOrderPlan(ownerSubmitter, selfApproval.getId()))
-        .isInstanceOf(ApiException.class)
-        .hasMessage("ORDER_PLAN_SELF_DECISION_FORBIDDEN");
-    assertThat(orderPlanPdfDocuments.findByOrderPlanIdOrderByVersionNumberAsc(selfApproval.getId())).isEmpty();
   }
 
   private List<String> recordComponentNames(Class<?> recordType) {
@@ -1196,6 +1222,24 @@ class OrderingMySqlIntegrationTest {
 
   private String sha256(byte[] value) throws Exception {
     return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
+  }
+
+  private void assertVendorContains(String vendorName, List<String> normalizedProductNames) {
+    assertThat(orderProductsForVendor(vendorName))
+        .extracting(OrderCatalogProduct::getNormalizedName)
+        .containsAll(normalizedProductNames);
+  }
+
+  private List<OrderCatalogProduct> orderProductsForVendor(String vendorName) {
+    Vendor vendor = vendors.findByLocationCodeAndNormalizedName(StoreCode.SEATTLE, OrderingKeys.key(vendorName)).orElseThrow();
+    return products.findByVendorIdOrderByDisplayOrderAscNameAsc(vendor.getId());
+  }
+
+  private OrderCatalogProduct catalogProduct(String vendorName, String normalizedName) {
+    return orderProductsForVendor(vendorName).stream()
+        .filter(product -> product.getNormalizedName().equals(normalizedName))
+        .findFirst()
+        .orElseThrow();
   }
 
   private Employee employee(String email, Position position, StoreCode store, String toastPin) {

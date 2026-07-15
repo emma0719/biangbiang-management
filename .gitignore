@@ -12,7 +12,7 @@ target/
 .expo/
 mobile/.expo/
 
-coverage/
+/coverage/
 build/
 dist/
 

@@ -17,6 +17,8 @@ import com.restaurant.ops.ordering.OrderingDtos.CreateInventorySessionRequest;
 import com.restaurant.ops.ordering.OrderingDtos.CreateOrderPlanRequest;
 import com.restaurant.ops.ordering.OrderingDtos.ProductRequest;
 import com.restaurant.ops.ordering.OrderingDtos.RejectOrderRequest;
+import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderPlanAmountRequest;
+import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderPlanAmountsRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertInventoryLineRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertInventoryLinesRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertOrderPlanLineRequest;
@@ -79,13 +81,13 @@ class OrderPlanPdfHttpIntegrationTest {
   @Autowired SensitiveValueProtector valueProtector;
 
   @Test
-  void authorizedStoreEmployeeCanViewAndDownloadApprovedOrderPlanPdf() throws Exception {
+  void authorizedStoreEmployeeCanViewAndDownloadSubmittedOrderSessionPdf() throws Exception {
     Employee manager = employee("pdf-http-manager@example.com", Position.MANAGER, StoreCode.SEATTLE, "7931", EmployeeStatus.ACTIVE);
     Employee creator = employee("pdf-http-creator@example.com", Position.FOOD_RUNNER, StoreCode.SEATTLE, "7932", EmployeeStatus.ACTIVE);
     Employee submitter = employee("pdf-http-submitter@example.com", Position.HOST, StoreCode.SEATTLE, "7933", EmployeeStatus.ACTIVE);
-    Employee approver = employee("pdf-http-approver@example.com", Position.OWNER, StoreCode.SEATTLE, "7934", EmployeeStatus.ACTIVE);
-    approver.setPreferredName("HTTP PDF Approver");
-    employees.save(approver);
+    Employee editor = employee("pdf-http-approver@example.com", Position.OWNER, StoreCode.SEATTLE, "7934", EmployeeStatus.ACTIVE);
+    editor.setPreferredName("HTTP PDF Editor");
+    employees.save(editor);
     Employee reader = employee("pdf-http-reader@example.com", Position.BARTENDER, StoreCode.SEATTLE, "7935", EmployeeStatus.ACTIVE);
     Employee inactive = employee("pdf-http-inactive@example.com", Position.BARTENDER, StoreCode.SEATTLE, "7936", EmployeeStatus.DEACTIVATED);
     Employee redmond = employee("pdf-http-redmond@example.com", Position.BARTENDER, StoreCode.REDMOND, "7937", EmployeeStatus.ACTIVE);
@@ -94,7 +96,6 @@ class OrderPlanPdfHttpIntegrationTest {
     OrderCatalogProduct product = ordering.saveProduct(manager, new ProductRequest(StoreCode.SEATTLE, vendor.getId(), "HPDF-1", "HTTP PDF Product", null, CatalogCategory.DRY_GOODS, null, CatalogUnit.CASE, null, CatalogUnit.CASE, null, "case", new BigDecimal("7.25"), "USD", new BigDecimal("5"), null, null, true, 1, null), null);
 
     OrderPlanSession plan = submittedPlan(creator, submitter, manager, product, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 2));
-    ordering.approveOrderPlan(approver, plan.getId());
     OrderPlanPdfDocument document = orderPlanPdfDocuments.findByOrderPlanIdAndCurrentVersionTrue(plan.getId()).orElseThrow();
     long countBefore = orderPlanPdfDocuments.countByOrderPlanId(plan.getId());
     String checksumBefore = document.getChecksumSha256();
@@ -108,8 +109,8 @@ class OrderPlanPdfHttpIntegrationTest {
         .andExpect(jsonPath("$.mimeType").value("application/pdf"))
         .andExpect(jsonPath("$.byteSize").value(document.getContent().length))
         .andExpect(jsonPath("$.sha256").value(sha256(document.getContent())))
-        .andExpect(jsonPath("$.generatedByEmployeeId").value(approver.getId()))
-        .andExpect(jsonPath("$.generatedByNameSnapshot").value("HTTP PDF Approver"))
+        .andExpect(jsonPath("$.generatedByEmployeeId").value(submitter.getId()))
+        .andExpect(jsonPath("$.generatedByNameSnapshot").value(submitter.getDisplayName()))
         .andExpect(jsonPath("$.current").value(true))
         .andExpect(jsonPath("$.pdfBytes").doesNotExist())
         .andExpect(jsonPath("$.content").doesNotExist())
@@ -143,21 +144,19 @@ class OrderPlanPdfHttpIntegrationTest {
     assertThat(orderPlanPdfDocuments.countByOrderPlanId(plan.getId())).isEqualTo(countBefore);
     assertThat(orderPlanPdfDocuments.findByOrderPlanIdAndCurrentVersionTrue(plan.getId()).orElseThrow().getChecksumSha256()).isEqualTo(checksumBefore);
 
-    OrderPlanSession completedViaLegacyEndpoint = submittedPlan(creator, submitter, manager, product, LocalDate.of(2026, 9, 3), LocalDate.of(2026, 9, 4));
-    ordering.completeOrderPlan(approver, completedViaLegacyEndpoint.getId());
-    mvc.perform(get("/api/order-plans/{id}/pdf", completedViaLegacyEndpoint.getId()).with(auth(reader)))
+    OrderPlanSession updated = submittedPlan(creator, submitter, manager, product, LocalDate.of(2026, 9, 3), LocalDate.of(2026, 9, 4));
+    Long updatedLineId = ordering.orderPlanLines(updated.getId()).getFirst().getId();
+    ordering.updateSubmittedOrderPlanAmounts(editor, updated.getId(), new UpdateOrderPlanAmountsRequest(List.of(new UpdateOrderPlanAmountRequest(updatedLineId, new BigDecimal("6"), "http pdf refresh"))));
+    mvc.perform(get("/api/order-plans/{id}/pdf", updated.getId()).with(auth(reader)))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.version").value(1));
+        .andExpect(jsonPath("$.version").value(2))
+        .andExpect(jsonPath("$.generatedByNameSnapshot").value("HTTP PDF Editor"));
 
     OrderPlanSession draft = ordering.createOrderPlan(creator, new CreateOrderPlanRequest(StoreCode.SEATTLE, sourceInventory(creator, manager, product, LocalDate.of(2026, 9, 5)).getId(), LocalDate.of(2026, 9, 6), null, null, null, "draft no pdf"));
     expectPdfNotFound(reader, draft.getId());
 
     OrderPlanSession submitted = submittedPlan(creator, submitter, manager, product, LocalDate.of(2026, 9, 7), LocalDate.of(2026, 9, 8));
-    expectPdfNotFound(reader, submitted.getId());
-
-    OrderPlanSession rejected = submittedPlan(creator, submitter, manager, product, LocalDate.of(2026, 9, 9), LocalDate.of(2026, 9, 10));
-    ordering.rejectOrderPlan(approver, rejected.getId(), new RejectOrderRequest("not approved"));
-    expectPdfNotFound(reader, rejected.getId());
+    mvc.perform(get("/api/order-plans/{id}/pdf", submitted.getId()).with(auth(reader))).andExpect(status().isOk());
 
     for (String path : List.of("/api/order-plans/{id}/pdf", "/api/order-plans/{id}/pdf/view", "/api/order-plans/{id}/pdf/download")) {
       mvc.perform(get(path, plan.getId()).with(auth(redmond)))

@@ -84,6 +84,8 @@ public final class OrderingEnums {
     DRAFT,
     IN_PROGRESS,
     SUBMITTED,
+    APPROVED,
+    RETURNED,
     COMPLETED,
     REJECTED,
     CANCELLED

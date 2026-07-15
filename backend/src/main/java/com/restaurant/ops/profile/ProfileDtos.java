@@ -11,7 +11,7 @@ import java.time.Instant;
 import java.util.Set;
 
 public class ProfileDtos {
-  public record EmployeePublicResponse(Long id, String displayName, String profilePhotoKey, Set<Position> positions, StoreCode homeStore) {}
+  public record EmployeePublicResponse(Long id, String displayName, String profilePhotoKey, Set<Position> positions, StoreCode homeStore, EmployeeStatus status) {}
   public record EmployeePrivateResponse(
       Long id,
       String englishName,

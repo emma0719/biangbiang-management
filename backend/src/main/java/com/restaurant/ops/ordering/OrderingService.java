@@ -15,6 +15,7 @@ import com.restaurant.ops.ordering.OrderingDtos.ProductRequest;
 import com.restaurant.ops.ordering.OrderingDtos.ReceiveOrderRequest;
 import com.restaurant.ops.ordering.OrderingDtos.RejectOrderRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpdatePurchaseOrderRequest;
+import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderPlanAmountsRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpdateInventoryCatalogItemRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderCatalogItemRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertInventoryLinesRequest;
@@ -500,20 +501,23 @@ public class OrderingService {
   @Transactional
   public OrderPlanSession createOrderPlan(Employee actor, CreateOrderPlanRequest request) {
     requireStoreAccess(actor, request.locationCode());
-    InventoryCountSession source = inventorySession(actor, request.sourceInventorySessionId());
-    if (source.getLocationCode() != request.locationCode()) throw new ApiException(HttpStatus.BAD_REQUEST, "ORDER_PLAN_INVENTORY_LOCATION_MISMATCH");
-    if (!isEligibleInventorySource(source)) throw new ApiException(HttpStatus.CONFLICT, "ORDER_PLAN_INVENTORY_NOT_ELIGIBLE");
+    InventoryCountSession source = request.sourceInventorySessionId() == null ? null : inventorySession(actor, request.sourceInventorySessionId());
+    if (source != null && source.getLocationCode() != request.locationCode()) throw new ApiException(HttpStatus.BAD_REQUEST, "ORDER_PLAN_INVENTORY_LOCATION_MISMATCH");
+    if (source != null && !isEligibleInventorySource(source)) throw new ApiException(HttpStatus.CONFLICT, "ORDER_PLAN_INVENTORY_NOT_ELIGIBLE");
     Employee assignedOrderer = request.assignedOrdererEmployeeId() == null ? null : employees.findById(request.assignedOrdererEmployeeId()).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "EMPLOYEE_NOT_FOUND"));
     if (assignedOrderer != null) {
       requireStoreAccess(assignedOrderer, request.locationCode());
     }
     OrderPlanSession plan = new OrderPlanSession();
     plan.setLocationCode(request.locationCode());
+    plan.setOrderBusiness(request.orderBusiness() == null ? OrderBusiness.BIANGBIANG_FRONT : request.orderBusiness());
     plan.setSourceInventorySession(source);
-    plan.setInventoryBusinessDate(source.getBusinessDate());
-    plan.setInventoryCompletedBy(source.getCompletedBy());
-    plan.setInventoryCompletedByNameSnapshot(source.getCompletedByNameSnapshot());
-    plan.setInventoryCompletedAt(source.getCompletedAt());
+    if (source != null) {
+      plan.setInventoryBusinessDate(source.getBusinessDate());
+      plan.setInventoryCompletedBy(source.getCompletedBy());
+      plan.setInventoryCompletedByNameSnapshot(source.getCompletedByNameSnapshot());
+      plan.setInventoryCompletedAt(source.getCompletedAt());
+    }
     plan.setBusinessDate(request.businessDate());
     plan.setCreatedBy(actor);
     plan.setAssignedOrderer(assignedOrderer);
@@ -522,7 +526,7 @@ public class OrderingService {
     plan.setNotes(blankToNull(request.notes()));
     OrderPlanSession saved = orderPlans.save(plan);
     audit("ORDER_PLAN", saved.getId(), "ORDER_PLAN_CREATED", actor, null, saved.getStatus().name(), null);
-    audit("ORDER_PLAN", saved.getId(), "SOURCE_INVENTORY_SELECTED", actor, null, source.getId().toString(), null);
+    if (source != null) audit("ORDER_PLAN", saved.getId(), "SOURCE_INVENTORY_SELECTED", actor, null, source.getId().toString(), null);
     if (assignedOrderer != null) audit("ORDER_PLAN", saved.getId(), "ORDERER_ASSIGNED", actor, null, assignedOrderer.getId().toString(), null);
     seedOrderPlanLines(saved, actor);
     return saved;
@@ -531,6 +535,7 @@ public class OrderingService {
   @Transactional
   public OrderPlanSession startOrderPlan(Employee actor, Long id) {
     OrderPlanSession plan = getOrderPlan(actor, id);
+    requireOwnedEditableSession(actor, plan);
     requireStatus(plan.getStatus() == OrderPlanStatus.DRAFT, "ORDER_PLAN_NOT_STARTABLE");
     plan.setStatus(OrderPlanStatus.IN_PROGRESS);
     plan.setStartedAt(Instant.now());
@@ -541,6 +546,7 @@ public class OrderingService {
   @Transactional
   public OrderPlanSession upsertOrderPlanLines(Employee actor, Long id, UpsertOrderPlanLinesRequest request) {
     OrderPlanSession plan = getOrderPlan(actor, id);
+    requireOwnedEditableSession(actor, plan);
     requireStatus(plan.getStatus() == OrderPlanStatus.DRAFT || plan.getStatus() == OrderPlanStatus.IN_PROGRESS, "ORDER_PLAN_NOT_EDITABLE");
     if (plan.getStatus() == OrderPlanStatus.DRAFT) {
       plan.setStatus(OrderPlanStatus.IN_PROGRESS);
@@ -580,51 +586,64 @@ public class OrderingService {
   public OrderPlanSession submitOrderPlan(Employee actor, Long id) {
     OrderPlanSession plan = getOrderPlan(actor, id);
     requireStatus(plan.getStatus() == OrderPlanStatus.DRAFT || plan.getStatus() == OrderPlanStatus.IN_PROGRESS, "ORDER_PLAN_NOT_SUBMITTABLE");
+    boolean hasLines = orderPlanLines.findByOrderPlanSessionIdOrderByVendorDisplayOrderAscVendorNameSnapshotAscProductDisplayOrderAscProductNameSnapshotAsc(plan.getId()).stream()
+        .anyMatch(line -> line.getFinalOrderQuantity() != null && line.getFinalOrderQuantity().compareTo(BigDecimal.ZERO) > 0);
+    requireStatus(hasLines, "ORDER_SESSION_HAS_NO_LINES");
     OrderPlanStatus oldStatus = plan.getStatus();
     plan.setStatus(OrderPlanStatus.SUBMITTED);
     plan.setSubmittedBy(actor);
     plan.setSubmittedByNameSnapshot(actor.getDisplayName());
     plan.setSubmittedAt(Instant.now());
+    plan.setReviewNote(null);
     audit("ORDER_PLAN", plan.getId(), "ORDER_PLAN_SUBMITTED", actor, oldStatus.name(), plan.getStatus().name(), null);
+    createOrderPlanPdfDocument(plan, actor);
     return plan;
   }
 
   @Transactional
   public OrderPlanSession approveOrderPlan(Employee actor, Long id) {
-    OrderPlanSession plan = getOrderPlan(actor, id);
-    requireOrderPlanDecisionAuthority(actor, plan);
-    requireStatus(plan.getStatus() == OrderPlanStatus.SUBMITTED, "ORDER_PLAN_NOT_APPROVABLE");
-    OrderPlanStatus oldStatus = plan.getStatus();
-    plan.setStatus(OrderPlanStatus.COMPLETED);
-    plan.setCompletedBy(actor);
-    plan.setCompletedByNameSnapshot(actor.getDisplayName());
-    plan.setCompletedAt(Instant.now());
-    audit("ORDER_PLAN", plan.getId(), "ORDER_PLAN_COMPLETED", actor, oldStatus.name(), plan.getStatus().name(), null);
-    audit("ORDER_PLAN", plan.getId(), "ORDER_PLAN_APPROVED", actor, oldStatus.name(), plan.getStatus().name(), null);
-    OrderPlanPdfDocument document = createOrderPlanPdfDocument(plan, actor);
-    audit("ORDER_PLAN", plan.getId(), "ORDER_PLAN_APPROVED_PDF_GENERATED", actor, null, "v" + document.getVersionNumber(), null);
-    return plan;
+    throw new ApiException(HttpStatus.GONE, "ORDER_SESSION_APPROVAL_DISABLED");
   }
 
   @Transactional
   public OrderPlanSession completeOrderPlan(Employee actor, Long id) {
-    return approveOrderPlan(actor, id);
+    throw new ApiException(HttpStatus.GONE, "ORDER_SESSION_APPROVAL_DISABLED");
   }
 
   @Transactional
   public OrderPlanSession rejectOrderPlan(Employee actor, Long id, RejectOrderRequest request) {
+    throw new ApiException(HttpStatus.GONE, "ORDER_SESSION_APPROVAL_DISABLED");
+  }
+
+  @Transactional
+  public OrderPlanSession updateSubmittedOrderPlanAmounts(Employee actor, Long id, UpdateOrderPlanAmountsRequest request) {
     OrderPlanSession plan = getOrderPlan(actor, id);
-    requireOrderPlanDecisionAuthority(actor, plan);
-    requireStatus(plan.getStatus() == OrderPlanStatus.SUBMITTED, "ORDER_PLAN_NOT_REJECTABLE");
-    String reason = request == null ? null : blankToNull(request.reason());
-    if (reason == null) throw new ApiException(HttpStatus.BAD_REQUEST, "ORDER_PLAN_REJECTION_REASON_REQUIRED");
-    OrderPlanStatus oldStatus = plan.getStatus();
-    plan.setStatus(OrderPlanStatus.REJECTED);
-    plan.setRejectedBy(actor);
-    plan.setRejectedByNameSnapshot(actor.getDisplayName());
-    plan.setRejectedAt(Instant.now());
-    plan.setRejectionReason(reason);
-    audit("ORDER_PLAN", plan.getId(), "ORDER_PLAN_REJECTED", actor, oldStatus.name(), plan.getStatus().name(), reason);
+    requireBusinessPartner(actor);
+    requireExplicitStoreAccess(actor, plan.getLocationCode());
+    requireStatus(plan.getStatus() == OrderPlanStatus.SUBMITTED, "ORDER_SESSION_NOT_EDITABLE");
+    Map<Long, OrderPlanLine> linesById = orderPlanLines.findByOrderPlanSessionIdOrderByVendorDisplayOrderAscVendorNameSnapshotAscProductDisplayOrderAscProductNameSnapshotAsc(plan.getId()).stream()
+        .collect(Collectors.toMap(OrderPlanLine::getId, line -> line));
+    StringBuilder changeSummary = new StringBuilder();
+    for (var item : request.lines()) {
+      OrderPlanLine line = linesById.get(item.lineId());
+      if (line == null) throw new ApiException(HttpStatus.BAD_REQUEST, "ORDER_PLAN_LINE_MISMATCH");
+      BigDecimal old = line.getFinalOrderQuantity();
+      BigDecimal next = nonNegative(item.finalOrderQuantity(), "ORDER_NEGATIVE_QUANTITY");
+      line.setFinalOrderQuantity(next);
+      line.setNotes(blankToNull(item.notes()));
+      line.setUpdatedBy(actor);
+      if (!Objects.equals(old, next)) {
+        if (changeSummary.length() > 0) changeSummary.append("; ");
+        changeSummary.append(line.getProductNameSnapshot()).append(": ")
+            .append(old == null ? "null" : old.toPlainString())
+            .append(" -> ")
+            .append(next.toPlainString());
+      }
+    }
+    plan.setLastModifiedBy(actor);
+    plan.setLastModifiedByNameSnapshot(actor.getDisplayName());
+    audit("ORDER_PLAN", plan.getId(), "ORDER_SESSION_AMOUNTS_UPDATED", actor, null, String.valueOf(request.lines().size()), changeSummary.length() == 0 ? null : changeSummary.toString());
+    createOrderPlanPdfDocument(plan, actor);
     return plan;
   }
 
@@ -632,6 +651,7 @@ public class OrderingService {
   public OrderPlanSession cancelOrderPlan(Employee actor, Long id) {
     OrderPlanSession plan = getOrderPlan(actor, id);
     if (!Objects.equals(plan.getCreatedBy().getId(), actor.getId())) requireBusinessPartner(actor);
+    requireStatus(plan.getStatus() == OrderPlanStatus.DRAFT || plan.getStatus() == OrderPlanStatus.IN_PROGRESS, "ORDER_SESSION_NOT_REMOVABLE");
     OrderPlanStatus oldStatus = plan.getStatus();
     plan.setStatus(OrderPlanStatus.CANCELLED);
     plan.setCancelledAt(Instant.now());
@@ -641,7 +661,8 @@ public class OrderingService {
 
   public List<OrderPlanSession> listOrderPlans(Employee actor, StoreCode locationCode, OrderPlanStatus status) {
     requireStoreAccess(actor, locationCode);
-    return status == null ? orderPlans.findByLocationCodeOrderByBusinessDateDescIdDesc(locationCode) : orderPlans.findByLocationCodeAndStatusOrderByBusinessDateDescIdDesc(locationCode, status);
+    List<OrderPlanSession> result = status == null ? orderPlans.findByLocationCodeOrderByBusinessDateDescIdDesc(locationCode) : orderPlans.findByLocationCodeAndStatusOrderByBusinessDateDescIdDesc(locationCode, status);
+    return result;
   }
 
   public OrderPlanSession getOrderPlan(Employee actor, Long id) {
@@ -944,7 +965,8 @@ public class OrderingService {
 
   private OrderPlanPdfDocument createOrderPlanPdfDocument(OrderPlanSession plan, Employee approver) {
     orderPlanPdfDocuments.findByOrderPlanIdAndCurrentVersionTrue(plan.getId()).ifPresent(existing -> {
-      throw new ApiException(HttpStatus.CONFLICT, "ORDER_PLAN_PDF_ALREADY_GENERATED");
+      existing.setCurrentVersion(false);
+      existing.setSupersededAt(Instant.now());
     });
     int version = (int) orderPlanPdfDocuments.countByOrderPlanId(plan.getId()) + 1;
     OrderPlanPdfDocument document = orderPlanPdfService.generate(plan, orderPlanLines.findByOrderPlanSessionIdOrderByVendorDisplayOrderAscVendorNameSnapshotAscProductDisplayOrderAscProductNameSnapshotAsc(plan.getId()), approver, version);
@@ -952,11 +974,11 @@ public class OrderingService {
   }
 
   private void seedOrderPlanLines(OrderPlanSession plan, Employee actor) {
-    Map<Long, InventoryCountLine> counted = inventoryLines.findBySessionIdOrderByProductDisplayOrderAsc(plan.getSourceInventorySession().getId()).stream()
+    Map<Long, InventoryCountLine> counted = plan.getSourceInventorySession() == null ? Map.of() : inventoryLines.findBySessionIdOrderByProductDisplayOrderAsc(plan.getSourceInventorySession().getId()).stream()
         .collect(Collectors.toMap(line -> line.getProduct().getId(), line -> line));
     products.findByLocationCodeOrderByDisplayOrderAscNameAsc(plan.getLocationCode()).stream()
         .filter(OrderCatalogProduct::isActive)
-        .filter(product -> product.getInventoryBusiness() == plan.getSourceInventorySession().getInventoryBusiness())
+        .filter(product -> product.getOrderBusiness() == plan.getOrderBusiness())
         .forEach(product -> {
           InventoryCountLine countLine = counted.get(product.getId());
           BigDecimal count = countLine == null ? BigDecimal.ZERO : countLine.getQuantityOnHand();
@@ -1159,9 +1181,14 @@ public class OrderingService {
   private void requireOrderPlanDecisionAuthority(Employee actor, OrderPlanSession plan) {
     requireBusinessPartner(actor);
     requireExplicitStoreAccess(actor, plan.getLocationCode());
-    if (plan.getSubmittedBy() != null && Objects.equals(plan.getSubmittedBy().getId(), actor.getId())) {
-      throw new ApiException(HttpStatus.FORBIDDEN, "ORDER_PLAN_SELF_DECISION_FORBIDDEN");
-    }
+  }
+
+  private boolean isEditableStatus(OrderPlanStatus status) {
+    return status == OrderPlanStatus.DRAFT || status == OrderPlanStatus.IN_PROGRESS || status == OrderPlanStatus.RETURNED || status == OrderPlanStatus.REJECTED;
+  }
+
+  private void requireOwnedEditableSession(Employee actor, OrderPlanSession plan) {
+    if (!Objects.equals(plan.getCreatedBy().getId(), actor.getId())) throw new ApiException(HttpStatus.FORBIDDEN, "ORDER_SESSION_NOT_OWNED");
   }
 
   private void requireStoreAccess(Employee actor, StoreCode locationCode) {

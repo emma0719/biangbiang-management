@@ -17,6 +17,7 @@ import com.restaurant.ops.ordering.OrderingDtos.PurchaseOrderResponse;
 import com.restaurant.ops.ordering.OrderingDtos.ReceiveOrderRequest;
 import com.restaurant.ops.ordering.OrderingDtos.RejectOrderRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpdatePurchaseOrderRequest;
+import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderPlanAmountsRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpdateInventoryCatalogItemRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpdateOrderCatalogItemRequest;
 import com.restaurant.ops.ordering.OrderingDtos.UpsertInventoryLinesRequest;
@@ -233,32 +234,32 @@ class OrderingController {
     return mapper.inventorySession(session, service.inventoryLines(session.getId()));
   }
 
-  @PostMapping("/api/order-plans")
+  @PostMapping({"/api/order-plans", "/api/order-sessions"})
   OrderPlanResponse createOrderPlan(@AuthenticationPrincipal AppPrincipal principal, @Valid @RequestBody CreateOrderPlanRequest request) {
     var plan = service.createOrderPlan(principal.employee(), request);
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
   }
 
-  @GetMapping("/api/order-plans")
+  @GetMapping({"/api/order-plans", "/api/order-sessions"})
   List<OrderPlanResponse> orderPlans(@AuthenticationPrincipal AppPrincipal principal, @RequestParam StoreCode locationCode, @RequestParam(required = false) OrderPlanStatus status) {
     return service.listOrderPlans(principal.employee(), locationCode, status).stream()
         .map(plan -> mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId())))
         .toList();
   }
 
-  @GetMapping("/api/order-plans/{id}")
+  @GetMapping({"/api/order-plans/{id}", "/api/order-sessions/{id}"})
   OrderPlanResponse orderPlan(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id) {
     var plan = service.getOrderPlan(principal.employee(), id);
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
   }
 
-  @PostMapping("/api/order-plans/{id}/start")
+  @PostMapping({"/api/order-plans/{id}/start", "/api/order-sessions/{id}/start"})
   OrderPlanResponse startOrderPlan(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id) {
     var plan = service.startOrderPlan(principal.employee(), id);
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
   }
 
-  @PutMapping("/api/order-plans/{id}/lines")
+  @PutMapping({"/api/order-plans/{id}/lines", "/api/order-sessions/{id}/lines"})
   OrderPlanResponse updateOrderPlanLines(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id, @Valid @RequestBody UpsertOrderPlanLinesRequest request) {
     var plan = service.upsertOrderPlanLines(principal.employee(), id, request);
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
@@ -270,19 +271,25 @@ class OrderingController {
     return orderPlan(principal, id);
   }
 
-  @PostMapping("/api/order-plans/{id}/submit")
+  @PostMapping({"/api/order-plans/{id}/submit", "/api/order-sessions/{id}/submit"})
   OrderPlanResponse submitOrderPlan(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id) {
     var plan = service.submitOrderPlan(principal.employee(), id);
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
   }
 
-  @PostMapping("/api/order-plans/{id}/approve")
+  @PutMapping({"/api/order-plans/{id}/amounts", "/api/order-sessions/{id}/amounts"})
+  OrderPlanResponse updateOrderPlanAmounts(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id, @Valid @RequestBody UpdateOrderPlanAmountsRequest request) {
+    var plan = service.updateSubmittedOrderPlanAmounts(principal.employee(), id, request);
+    return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
+  }
+
+  @PostMapping({"/api/order-plans/{id}/approve", "/api/order-sessions/{id}/approve"})
   OrderPlanResponse approveOrderPlan(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id) {
     var plan = service.approveOrderPlan(principal.employee(), id);
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
   }
 
-  @PostMapping("/api/order-plans/{id}/reject")
+  @PostMapping({"/api/order-plans/{id}/reject", "/api/order-sessions/{id}/return"})
   OrderPlanResponse rejectOrderPlan(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id, @Valid @RequestBody RejectOrderRequest request) {
     var plan = service.rejectOrderPlan(principal.employee(), id, request);
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
@@ -294,7 +301,7 @@ class OrderingController {
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
   }
 
-  @PostMapping("/api/order-plans/{id}/cancel")
+  @PostMapping({"/api/order-plans/{id}/cancel", "/api/order-sessions/{id}/cancel"})
   OrderPlanResponse cancelOrderPlan(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id) {
     var plan = service.cancelOrderPlan(principal.employee(), id);
     return mapper.orderPlan(plan, service.orderPlanLines(plan.getId()), service.vendorOrdersForPlan(plan.getId()), service.auditEvents("ORDER_PLAN", plan.getId()));
@@ -401,17 +408,17 @@ class OrderingController {
     return service.pdfVersions(principal.employee(), id).stream().map(mapper::pdf).toList();
   }
 
-  @GetMapping("/api/order-plans/{id}/pdf")
+  @GetMapping({"/api/order-plans/{id}/pdf", "/api/order-sessions/{id}/pdf"})
   OrderingDtos.OrderPlanPdfMetadataResponse orderPlanPdfMetadata(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id) {
     return mapper.orderPlanPdf(service.currentOrderPlanPdf(principal.employee(), id));
   }
 
-  @GetMapping("/api/order-plans/{id}/pdf/view")
+  @GetMapping({"/api/order-plans/{id}/pdf/view", "/api/order-sessions/{id}/pdf/view"})
   ResponseEntity<byte[]> viewOrderPlanPdf(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id) {
     return orderPlanPdfResponse(service.currentOrderPlanPdf(principal.employee(), id), ContentDisposition.inline());
   }
 
-  @GetMapping("/api/order-plans/{id}/pdf/download")
+  @GetMapping({"/api/order-plans/{id}/pdf/download", "/api/order-sessions/{id}/pdf/download"})
   ResponseEntity<byte[]> downloadOrderPlanPdf(@AuthenticationPrincipal AppPrincipal principal, @PathVariable Long id) {
     return orderPlanPdfResponse(service.currentOrderPlanPdf(principal.employee(), id), ContentDisposition.attachment());
   }

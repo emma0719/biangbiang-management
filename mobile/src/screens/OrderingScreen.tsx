@@ -24,6 +24,9 @@ import {
   InventoryHistoryView,
   numberOrZero,
   OrderHistoryView,
+  OrderSessionAmountsEditView,
+  OrderSessionHistoryView,
+  OrderSessionReviewView,
   OrderWorkflowView,
   OrderPlanView,
   OrderingDashboard,
@@ -42,6 +45,12 @@ type OrderingMode = 'full' | 'order' | 'inventory';
 type InventoryDialog =
   | { type: 'leave'; leave: () => void }
   | { type: 'draftChoice' };
+type OrderSubmitDialog =
+  | { type: 'success'; sessionId: number }
+  | { type: 'error'; message: string };
+type OrderUpdateDialog =
+  | { type: 'success'; sessionId: number }
+  | { type: 'error'; message: string };
 const modeSections: Record<OrderingMode, OrderingSection[]> = {
   full: ['dashboard', 'vendors', 'editor', 'inventory', 'plans', 'review', 'receiving', 'history', 'catalog'],
   order: ['vendors', 'review', 'history'],
@@ -70,10 +79,18 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
   const [pdfPreflightError, setPdfPreflightError] = useState<TranslationKey | undefined>();
   const [orderMessage, setOrderMessage] = useState<TranslationKey | undefined>();
   const [orderError, setOrderError] = useState<TranslationKey | undefined>();
+  const [orderSubmitDialog, setOrderSubmitDialog] = useState<OrderSubmitDialog | undefined>();
+  const [orderSubmitInFlight, setOrderSubmitInFlight] = useState(false);
+  const [submittedEditSessionId, setSubmittedEditSessionId] = useState<number | undefined>();
+  const [submittedEditQuantities, setSubmittedEditQuantities] = useState<Quantities>({});
+  const [orderUpdateDialog, setOrderUpdateDialog] = useState<OrderUpdateDialog | undefined>();
+  const [orderUpdateError, setOrderUpdateError] = useState<TranslationKey | undefined>();
   const [inventoryMessage, setInventoryMessage] = useState<TranslationKey | undefined>();
   const [inventoryError, setInventoryError] = useState<TranslationKey | undefined>();
   const [inventoryPdfError, setInventoryPdfError] = useState<TranslationKey | undefined>();
   const [inventoryDirty, setInventoryDirty] = useState(false);
+  const [orderDirty, setOrderDirty] = useState(false);
+  const [startNewOrder, setStartNewOrder] = useState(false);
   const [activeInventoryCountId, setActiveInventoryCountId] = useState<number | undefined>();
   const [startNewInventoryCount, setStartNewInventoryCount] = useState(false);
   const [inventoryDialog, setInventoryDialog] = useState<InventoryDialog | undefined>();
@@ -94,6 +111,8 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
   const [deleteOrderCatalogProduct, setDeleteOrderCatalogProduct] = useState<OrderProduct | undefined>();
   const [latestInventoryReference, setLatestInventoryReference] = useState<OrderInventoryReference | undefined>();
   const promptedForDraft = useRef(false);
+  const loadedOrderSessionId = useRef<number | undefined>();
+  const savedOrderQuantities = useRef('{}');
 
   const profile = useQuery({ queryKey: ['me'], queryFn: () => api<EmployeePrivate>('/api/me') });
   const vendors = useQuery({ queryKey: ['ordering', 'vendors'], queryFn: () => api<Vendor[]>(`/api/vendors?locationCode=${locationCode}&activeOnly=true`) });
@@ -114,10 +133,12 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
   const countList = asArray(counts.data);
   const planList = asArray(plans.data);
   const latestEligibleCount = countList.find((count) => ['SUBMITTED', 'REVIEWED', 'LOCKED', 'COMPLETED'].includes(count.status));
-  const activePlan = planList[0];
+  const editablePlan = startNewOrder ? undefined : planList.find((plan) => plan.createdByEmployeeId === profile.data?.id && ['DRAFT', 'IN_PROGRESS'].includes(plan.status) && (!selectedOrderBusiness || plan.orderBusiness === selectedOrderBusiness));
+  const submittedEditSession = submittedEditSessionId ? planList.find((plan) => plan.id === submittedEditSessionId) : undefined;
+  const activePlan = submittedEditSession ?? editablePlan ?? planList.find((plan) => plan.id === selectedOrderId) ?? planList[0];
   const orderPlanPdf = useQuery({
     queryKey: ['order-plan-pdf', activePlan?.id],
-    enabled: section === 'plans' && Boolean(activePlan?.id),
+    enabled: ['plans', 'review'].includes(section) && Boolean(activePlan?.id),
     queryFn: () => getOrderPlanPdfMetadata(activePlan!.id),
     retry: (failureCount, error) => !hasApiCode(error, 'ORDER_PLAN_PDF_NOT_FOUND') && failureCount < 2
   });
@@ -139,9 +160,27 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
     setInventoryDialog({ type: 'draftChoice' });
   }, [existingInventoryDraft, mode, section, selectedInventoryBusiness, t]);
 
+  useEffect(() => {
+    if (!editablePlan || loadedOrderSessionId.current === editablePlan.id) return;
+    loadedOrderSessionId.current = editablePlan.id;
+    const loaded = Object.fromEntries(editablePlan.lines.filter((line) => Number(line.finalOrderQuantity ?? 0) > 0).map((line) => [line.productId, String(line.finalOrderQuantity)]));
+    savedOrderQuantities.current = JSON.stringify(loaded);
+    setQuantities(loaded);
+    setOrderDirty(false);
+  }, [editablePlan]);
+
+  useEffect(() => {
+    if (mode === 'order' && selectedOrderBusiness) setOrderDirty(JSON.stringify(quantities) !== savedOrderQuantities.current);
+  }, [mode, quantities, selectedOrderBusiness]);
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['ordering'] });
     queryClient.invalidateQueries({ queryKey: ['order-plan-pdf'] });
+  };
+
+  const refreshOrderHistory = () => {
+    queryClient.invalidateQueries({ queryKey: ['ordering', 'plans'] });
+    queryClient.refetchQueries({ queryKey: ['ordering', 'plans'] });
   };
 
   const createOrder = useMutation({
@@ -452,19 +491,34 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
 
   const createPlan = useMutation({
     mutationFn: async () => {
-      if (!latestEligibleCount) throw new Error('missing inventory source');
-      return api<OrderPlan>('/api/order-plans', { method: 'POST', body: JSON.stringify({ locationCode, sourceInventorySessionId: latestEligibleCount.id, businessDate: today() }) });
+      if (mode === 'full') {
+        if (!latestEligibleCount) throw new Error('missing inventory source');
+        return api<OrderPlan>('/api/order-plans', { method: 'POST', body: JSON.stringify({ locationCode, sourceInventorySessionId: latestEligibleCount.id, businessDate: today() }) });
+      }
+      if (!selectedOrderBusiness) throw new Error('missing order business');
+      return api<OrderPlan>('/api/order-sessions', { method: 'POST', body: JSON.stringify({ locationCode, businessDate: today(), orderBusiness: selectedOrderBusiness }) });
     },
-    onSuccess: refresh
+    onSuccess: (plan) => {
+      setStartNewOrder(false);
+      setSelectedOrderId(plan.id);
+      queryClient.setQueryData<OrderPlan[]>(['ordering', 'plans'], (current) => [plan, ...asArray(current).filter((item) => item.id !== plan.id)]);
+      refresh();
+    }
   });
 
   const savePlan = useMutation({
     mutationFn: async () => {
-      if (!activePlan) throw new Error('missing order plan');
-      const lines = activePlan.lines.map((line) => ({ productId: line.productId, finalOrderQuantity: numberOrZero(planFinalQuantities[line.productId] ?? String(line.finalOrderQuantity ?? 0)), notes: line.notes ?? '' }));
-      return api<OrderPlan>(`/api/order-plans/${activePlan.id}/lines`, { method: 'PUT', body: JSON.stringify({ lines }) });
+      const plan = editablePlan ?? await createPlan.mutateAsync();
+      const lines = plan.lines.map((line) => ({ productId: line.productId, finalOrderQuantity: numberOrZero(quantities[line.productId] ?? planFinalQuantities[line.productId] ?? String(line.finalOrderQuantity ?? 0)), notes: line.notes ?? '' }));
+      return api<OrderPlan>(`/api/${mode === 'full' ? 'order-plans' : 'order-sessions'}/${plan.id}/lines`, { method: 'PUT', body: JSON.stringify({ lines }) });
     },
-    onSuccess: refresh
+    onSuccess: (plan) => {
+      setSelectedOrderId(plan.id);
+      setOrderMessage('success');
+      savedOrderQuantities.current = JSON.stringify(quantities);
+      setOrderDirty(false);
+      refresh();
+    }
   });
 
   const generateVendorOrders = useMutation({
@@ -475,27 +529,114 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
     onSuccess: refresh
   });
 
+  const applySubmittedOrderSession = (plan: OrderPlan) => {
+    setSelectedOrderId(plan.id);
+    setOrderDirty(false);
+    savedOrderQuantities.current = JSON.stringify(quantities);
+    queryClient.setQueryData<OrderPlan[]>(['ordering', 'plans'], (current) => [plan, ...asArray(current).filter((item) => item.id !== plan.id)]);
+    refresh();
+    refreshOrderHistory();
+  };
+
   const submitPlan = useMutation({
     mutationFn: async () => {
       const saved = await savePlan.mutateAsync();
-      return api<OrderPlan>(`/api/order-plans/${saved.id}/submit`, { method: 'POST' });
+      return api<OrderPlan>(`/api/${mode === 'full' ? 'order-plans' : 'order-sessions'}/${saved.id}/submit`, { method: 'POST' });
     },
-    onSuccess: refresh
+    onMutate: () => {
+      setOrderError(undefined);
+      setOrderMessage(undefined);
+      setOrderSubmitDialog(undefined);
+    },
+    onSuccess: (plan) => {
+      applySubmittedOrderSession(plan);
+      if (mode === 'order') setOrderSubmitDialog({ type: 'success', sessionId: plan.id });
+    },
+    onError: (error) => {
+      setOrderMessage(undefined);
+      setOrderError('unableToSubmitOrder');
+      setOrderSubmitDialog({ type: 'error', message: orderSubmitErrorMessage(error, t) });
+    }
+  });
+
+  const updateSubmittedOrderAmounts = useMutation({
+    mutationFn: async (session: OrderPlan) => {
+      const lines = session.lines.map((line) => ({
+        lineId: line.id,
+        finalOrderQuantity: numberOrZero(submittedEditQuantities[line.id] ?? String(line.finalOrderQuantity ?? 0)),
+        notes: line.notes ?? ''
+      }));
+      return api<OrderPlan>(`/api/order-sessions/${session.id}/amounts`, { method: 'PUT', body: JSON.stringify({ lines }) });
+    },
+    onMutate: () => {
+      setOrderUpdateDialog(undefined);
+      setOrderUpdateError(undefined);
+    },
+    onSuccess: (plan) => {
+      setSelectedOrderId(plan.id);
+      setSubmittedEditSessionId(undefined);
+      setSubmittedEditQuantities({});
+      queryClient.setQueryData<OrderPlan[]>(['ordering', 'plans'], (current) => [plan, ...asArray(current).filter((item) => item.id !== plan.id)]);
+      queryClient.invalidateQueries({ queryKey: ['order-plan-pdf', plan.id] });
+      refreshOrderHistory();
+      setOrderUpdateDialog({ type: 'success', sessionId: plan.id });
+      setSection('review');
+    },
+    onError: (error) => {
+      setOrderUpdateError('apiError');
+      setOrderUpdateDialog({ type: 'error', message: orderSubmitErrorMessage(error, t) });
+    }
+  });
+
+  const removeOrderDraft = useMutation({
+    mutationFn: (session: OrderPlan) => api<OrderPlan>(`/api/order-sessions/${session.id}/cancel`, { method: 'POST' }),
+    onSuccess: (plan) => {
+      queryClient.setQueryData<OrderPlan[]>(['ordering', 'plans'], (current) => asArray(current).filter((item) => item.id !== plan.id));
+      if (selectedOrderId === plan.id) setSelectedOrderId(undefined);
+      if (loadedOrderSessionId.current === plan.id) loadedOrderSessionId.current = undefined;
+      refreshOrderHistory();
+    }
   });
 
   const confirmSubmitPlan = () => {
+    if (submitPlan.isPending || savePlan.isPending || createPlan.isPending) return;
     Alert.alert(t('submitForApproval'), `${t('submittingAs')}: ${submitterName}`, [
       { text: t('cancel') },
-      { text: t('confirm'), onPress: () => submitPlan.mutate() }
+      { text: t('confirm'), onPress: () => { if (!submitPlan.isPending) submitPlan.mutate(); } }
     ]);
   };
 
+  const handleSubmitOrderSession = async () => {
+    logOrderSubmit('button pressed');
+    if (orderSubmitInFlight || savePlan.isPending || createPlan.isPending || submitPlan.isPending) return;
+    setOrderSubmitInFlight(true);
+    setOrderError(undefined);
+    setOrderMessage(undefined);
+    setOrderSubmitDialog(undefined);
+    try {
+      if (!selectedOrderBusiness) throw new Error('No order business was selected. Please choose a business and try again.');
+      const saved = await savePlan.mutateAsync();
+      logOrderSubmit('starting request', { sessionId: saved.id });
+      const submitted = await api<OrderPlan>(`/api/order-sessions/${saved.id}/submit`, { method: 'POST' });
+      logOrderSubmit('success', { sessionId: submitted.id });
+      applySubmittedOrderSession(submitted);
+      setOrderSubmitDialog({ type: 'success', sessionId: submitted.id });
+    } catch (error) {
+      logOrderSubmit('failed', error);
+      setOrderMessage(undefined);
+      setOrderError('unableToSubmitOrder');
+      setOrderSubmitDialog({ type: 'error', message: orderSubmitErrorMessage(error, t) });
+    } finally {
+      setOrderSubmitInFlight(false);
+    }
+  };
+
   const viewOrderPlanPdf = useMutation({
-    mutationFn: async (target?: PdfViewTarget) => {
-      if (!activePlan) throw new Error('missing order plan');
+    mutationFn: async ({ orderPlanId, filename, target }: { orderPlanId: number; filename?: string; target?: PdfViewTarget }) => {
       try {
-        const file = await getOrderPlanPdfView(activePlan.id);
-        await viewPdfFile(file, orderPlanPdf.data?.filename ?? file.filename ?? 'order-plan.pdf', target);
+        const file = await getOrderPlanPdfView(orderPlanId);
+        const metadataFilename = orderPlanPdf.data?.orderPlanId === orderPlanId ? orderPlanPdf.data.filename : undefined;
+        await viewPdfFile(file, metadataFilename ?? filename ?? file.filename ?? `order-session-${orderPlanId}.pdf`, target);
       } catch (error) {
         target?.close();
         throw error;
@@ -504,14 +645,16 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
   });
 
   const downloadOrderPlanPdf = useMutation({
-    mutationFn: async () => {
-      if (!activePlan) throw new Error('missing order plan');
-      const file = await getOrderPlanPdfDownload(activePlan.id);
-      await downloadPdfFile(file, orderPlanPdf.data?.filename ?? file.filename ?? 'order-plan.pdf');
+    mutationFn: async ({ orderPlanId, filename }: { orderPlanId: number; filename?: string }) => {
+      const file = await getOrderPlanPdfDownload(orderPlanId);
+      const metadataFilename = orderPlanPdf.data?.orderPlanId === orderPlanId ? orderPlanPdf.data.filename : undefined;
+      await downloadPdfFile(file, metadataFilename ?? filename ?? file.filename ?? `order-session-${orderPlanId}.pdf`);
     }
   });
 
-  const handleViewOrderPlanPdf = () => {
+  const handleViewOrderPlanPdf = (session?: OrderPlan) => {
+    const orderPlanId = session?.id ?? activePlan?.id;
+    if (!orderPlanId) return;
     viewOrderPlanPdf.reset();
     downloadOrderPlanPdf.reset();
     setPdfPreflightError(undefined);
@@ -520,14 +663,16 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
       setPdfPreflightError('unableToOpenPdf');
       return;
     }
-    viewOrderPlanPdf.mutate(target);
+    viewOrderPlanPdf.mutate({ orderPlanId, target });
   };
 
-  const handleDownloadOrderPlanPdf = () => {
+  const handleDownloadOrderPlanPdf = (session?: OrderPlan) => {
+    const orderPlanId = session?.id ?? activePlan?.id;
+    if (!orderPlanId) return;
     viewOrderPlanPdf.reset();
     downloadOrderPlanPdf.reset();
     setPdfPreflightError(undefined);
-    downloadOrderPlanPdf.mutate();
+    downloadOrderPlanPdf.mutate({ orderPlanId });
   };
 
   const viewPurchaseOrderPdf = useMutation({
@@ -582,7 +727,7 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
 
   const sections = modeSections[mode];
   const sectionLabels = mode === 'order'
-    ? { vendors: t('newOrder'), review: t('reviewAndReceiving'), history: t('historyOrders') }
+    ? { vendors: t('newOrder'), review: t('orderDetails'), history: t('historyOrders') }
     : mode === 'inventory'
       ? { inventory: t('inventoryCount'), history: t('history') }
       : undefined;
@@ -644,6 +789,10 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
     setOrderMessage(undefined);
     setOrderError(undefined);
     setQuantities({});
+    setSubmittedEditSessionId(undefined);
+    setSubmittedEditQuantities({});
+    setOrderUpdateDialog(undefined);
+    setOrderUpdateError(undefined);
     setSearch('');
   };
 
@@ -660,7 +809,28 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
     setOrderMessage(undefined);
     setOrderError(undefined);
     setQuantities({});
+    setSubmittedEditSessionId(undefined);
+    setSubmittedEditQuantities({});
+    setOrderUpdateDialog(undefined);
+    setOrderUpdateError(undefined);
     setSearch('');
+  };
+
+  const beginEditSubmittedAmounts = (session: OrderPlan) => {
+    setStartNewOrder(false);
+    setSelectedOrderId(session.id);
+    setSubmittedEditSessionId(session.id);
+    setSubmittedEditQuantities(Object.fromEntries(session.lines.map((line) => [line.id, String(line.finalOrderQuantity ?? 0)])));
+    setOrderUpdateDialog(undefined);
+    setOrderUpdateError(undefined);
+    setSection('review');
+  };
+
+  const cancelEditSubmittedAmounts = () => {
+    setSubmittedEditSessionId(undefined);
+    setSubmittedEditQuantities({});
+    setOrderUpdateError(undefined);
+    setSection('review');
   };
 
   const changeInventoryBusiness = () => {
@@ -722,22 +892,58 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
     }
   };
 
+  const setOrderSection = (next: OrderingSection) => {
+    if (next === 'history') refreshOrderHistory();
+    if (section === 'vendors' && orderDirty) {
+      Alert.alert('Unsaved Changes', 'Save this Order Session before leaving?', [
+        { text: t('cancel') },
+        { text: 'Discard', onPress: () => { setOrderDirty(false); setSection(next); } },
+        { text: t('saveDraft'), onPress: () => savePlan.mutate(undefined, { onSuccess: () => setSection(next) }) }
+      ]);
+      return;
+    }
+    setSection(next);
+  };
+
+  const stayOnSubmittedOrder = () => {
+    setOrderSubmitDialog(undefined);
+    setSection('review');
+  };
+
+  const viewSubmittedOrderHistory = () => {
+    setOrderSubmitDialog(undefined);
+    refreshOrderHistory();
+    setSection('history');
+  };
+
+  const returnToProfile = () => {
+    setOrderSubmitDialog(undefined);
+    router.replace('/profile');
+  };
+
+  const stayOnUpdatedOrder = () => {
+    setOrderUpdateDialog(undefined);
+    setSection('review');
+  };
+
   return (
     <AppScreen title={screenTitle} subtitle={screenSubtitle} maxWidth={layout.managerMaxWidth} activeMainTab={activeMainTab} onBeforeMainTabChange={(path) => confirmInventoryLeave(() => router.replace(path))}>
-      <SectionNav active={section} setActive={mode === 'inventory' ? setInventorySection : setSection} sections={sections} labels={sectionLabels} />
+      <SectionNav active={section} setActive={mode === 'inventory' ? setInventorySection : mode === 'order' ? setOrderSection : setSection} sections={sections} labels={sectionLabels} />
       {section === 'dashboard' && sections.includes('dashboard') ? <OrderingDashboard orders={orderList} counts={countList} plans={planList} vendorCount={vendorList.length} onSection={(next) => sections.includes(next) ? setSection(next) : setSection(initialSection[mode])} /> : null}
       {section === 'vendors' && sections.includes('vendors') && mode === 'order' && !selectedOrderBusiness ? <OrderBusinessSelector onSelect={selectOrderBusiness} /> : null}
-      {section === 'vendors' && sections.includes('vendors') && mode === 'order' && selectedOrderBusiness ? <OrderWorkflowView businessLabel={orderBusinessName(selectedOrderBusiness)} vendors={vendorList.filter((vendor) => productList.some((product) => product.vendorId === vendor.id))} products={selectedVendorProducts} allProducts={productList} selectedVendor={selectedVendor} search={search} setSearch={setSearch} quantities={quantities} setQuantities={setQuantities} saving={saveDraft.isPending || createOrder.isPending} submitting={submitOrder.isPending} message={orderMessage ? t(orderMessage) : undefined} error={orderError ? t(orderError) : undefined} canManageCatalog={isBusinessPartner} managingCatalog={manageOrderCatalog} catalogForm={orderCatalogForm} setCatalogForm={(form) => { setOrderCatalogForm(form); setOrderCatalogError(undefined); }} editingCatalogProductId={editingOrderCatalogProductId} catalogSaving={saveOrderCatalogItem.isPending} catalogDeletingProductId={deleteOrderCatalogItem.isPending ? deleteOrderCatalogItem.variables?.id : undefined} catalogMessage={orderCatalogMessage ? t(orderCatalogMessage) : undefined} catalogError={orderCatalogError ? t(orderCatalogError) : undefined} inventoryReference={latestInventoryReference} importingReference={importLatestInventory.isPending} onImportLatestInventory={() => importLatestInventory.mutate()} onChangeBusiness={changeOrderBusiness} onManageCatalog={() => { setManageOrderCatalog((value) => !value); resetOrderCatalogForm(); }} onSaveCatalog={() => saveOrderCatalogItem.mutate()} onEditCatalog={(product) => { setEditingOrderCatalogProductId(product.id); setOrderCatalogForm({ name: product.name, unit: product.orderUnitLabel ?? product.inventoryUnitLabel ?? 'case', vendorName: product.vendorName === 'Unknown vendor' ? '' : product.vendorName }); setOrderCatalogMessage(undefined); setOrderCatalogError(undefined); }} onCancelEditCatalog={resetOrderCatalogForm} onDeleteCatalog={(product) => setDeleteOrderCatalogProduct(product)} onSelectVendor={(vendor) => { setSelectedVendorId(vendor.id); setSearch(''); }} onSave={() => saveDraft.mutate()} onSubmit={confirmSubmitOrder} /> : null}
+      {section === 'vendors' && sections.includes('vendors') && mode === 'order' && selectedOrderBusiness ? <OrderWorkflowView businessLabel={orderBusinessName(selectedOrderBusiness)} vendors={vendorList.filter((vendor) => productList.some((product) => product.vendorId === vendor.id))} products={selectedVendorProducts} allProducts={productList} selectedVendor={selectedVendor} search={search} setSearch={setSearch} quantities={quantities} setQuantities={setQuantities} saving={savePlan.isPending || createPlan.isPending} submitting={orderSubmitInFlight || submitPlan.isPending} message={orderMessage ? t(orderMessage) : undefined} error={orderError ? t(orderError) : undefined} canManageCatalog={isBusinessPartner} managingCatalog={manageOrderCatalog} catalogForm={orderCatalogForm} setCatalogForm={(form) => { setOrderCatalogForm(form); setOrderCatalogError(undefined); }} editingCatalogProductId={editingOrderCatalogProductId} catalogSaving={saveOrderCatalogItem.isPending} catalogDeletingProductId={deleteOrderCatalogItem.isPending ? deleteOrderCatalogItem.variables?.id : undefined} catalogMessage={orderCatalogMessage ? t(orderCatalogMessage) : undefined} catalogError={orderCatalogError ? t(orderCatalogError) : undefined} inventoryReference={latestInventoryReference} importingReference={importLatestInventory.isPending} onImportLatestInventory={() => importLatestInventory.mutate()} onChangeBusiness={changeOrderBusiness} onManageCatalog={() => { setManageOrderCatalog((value) => !value); resetOrderCatalogForm(); }} onSaveCatalog={() => saveOrderCatalogItem.mutate()} onEditCatalog={(product) => { setEditingOrderCatalogProductId(product.id); setOrderCatalogForm({ name: product.name, unit: product.orderUnitLabel ?? product.inventoryUnitLabel ?? 'case', vendorName: product.vendorName === 'Unknown vendor' ? '' : product.vendorName }); setOrderCatalogMessage(undefined); setOrderCatalogError(undefined); }} onCancelEditCatalog={resetOrderCatalogForm} onDeleteCatalog={(product) => setDeleteOrderCatalogProduct(product)} onSelectVendor={(vendor) => { setSelectedVendorId(vendor.id); setSearch(''); }} onSave={() => savePlan.mutate()} onSubmit={handleSubmitOrderSession} /> : null}
       {section === 'vendors' && sections.includes('vendors') && mode !== 'order' ? <VendorSelectionView vendors={vendorList} products={productList} selectedVendorId={selectedVendor?.id} onSelect={(vendor) => { setSelectedVendorId(vendor.id); setSection('editor'); }} /> : null}
       {section === 'editor' && sections.includes('editor') ? <VendorOrderEditorView vendor={selectedVendor} products={visibleProducts} search={search} setSearch={setSearch} quantities={quantities} setQuantities={setQuantities} inventory={inventory} setInventory={setInventory} hideZero={hideZero} setHideZero={setHideZero} subtotal={estimatedSubtotal} canCreateOrder={Boolean(selectedVendor)} submitterName={submitterName} onSave={() => saveDraft.mutate()} onSubmit={confirmSubmitOrder} /> : null}
       {section === 'inventory' && sections.includes('inventory') && !selectedInventoryBusiness ? <InventoryBusinessSelector onSelect={selectInventoryBusiness} /> : null}
       {section === 'inventory' && sections.includes('inventory') && (mode !== 'inventory' || selectedInventoryBusiness) ? <InventoryCountView businessLabel={selectedInventoryBusiness ? inventoryBusinessName(selectedInventoryBusiness) : t('inventoryCount')} vendors={vendorList.filter((vendor) => productList.some((product) => product.vendorId === vendor.id))} products={productList} selectedVendor={selectedVendor} inventory={inventory} setInventory={(next) => { setInventory(next); setInventoryDirty(true); setInventoryError(undefined); setInventoryDialogError(undefined); }} search={search} setSearch={setSearch} submitterName={submitterName} saving={saveCount.isPending || createCount.isPending} submitting={submitCount.isPending} message={inventoryMessage ? t(inventoryMessage) : undefined} error={inventoryDialog?.type === 'leave' ? undefined : inventoryError ? t(inventoryError) : undefined} canManageCatalog={isBusinessPartner} managingCatalog={manageInventoryCatalog} catalogForm={catalogForm} setCatalogForm={(form) => { setCatalogForm(form); setCatalogError(undefined); }} editingCatalogProductId={editingCatalogProductId} catalogSaving={saveInventoryCatalogItem.isPending} catalogDeletingProductId={deleteInventoryCatalogItem.isPending ? deleteInventoryCatalogItem.variables?.id : undefined} catalogMessage={catalogMessage ? t(catalogMessage) : undefined} catalogError={catalogError ? t(catalogError) : undefined} onManageCatalog={() => { setManageInventoryCatalog((value) => !value); resetCatalogForm(); }} onSaveCatalog={() => saveInventoryCatalogItem.mutate()} onEditCatalog={(product) => { setEditingCatalogProductId(product.id); setCatalogForm({ name: product.name, unit: product.inventoryUnitLabel ?? 'bt', vendorName: product.vendorName === 'Unknown vendor' ? '' : product.vendorName }); setCatalogMessage(undefined); setCatalogError(undefined); }} onCancelEditCatalog={resetCatalogForm} onDeleteCatalog={(product) => setDeleteCatalogProduct(product)} onChangeBusiness={changeInventoryBusiness} onSelectVendor={(vendor) => { setSelectedVendorId(vendor.id); setSearch(''); }} onSubmit={confirmSubmitInventory} /> : null}
       {section === 'plans' && sections.includes('plans') ? <OrderPlanView plans={planList} counts={countList} products={productList} finalQuantities={planFinalQuantities} setFinalQuantities={setPlanFinalQuantities} submitterName={submitterName} onCreate={() => createPlan.mutate()} onSave={() => savePlan.mutate()} onSubmit={confirmSubmitPlan} onGenerate={() => generateVendorOrders.mutate()} pdfState={{ metadata: orderPlanPdf.data, loading: orderPlanPdf.isLoading, unavailable: pdfUnavailable, errorMessage: pdfMetadataErrorMessage, actionErrorMessage: pdfActionErrorMessage, viewing: viewOrderPlanPdf.isPending, downloading: downloadOrderPlanPdf.isPending, onView: handleViewOrderPlanPdf, onDownload: handleDownloadOrderPlanPdf }} /> : null}
-      {section === 'review' && sections.includes('review') ? <OrderReviewView order={selectedOrder} isBusinessPartner={isBusinessPartner} rejectReason={rejectReason} setRejectReason={setRejectReason} pdfActionErrorMessage={pdfPreflightError ? t(pdfPreflightError) : viewPurchaseOrderPdf.error ? t(pdfMessageKey(viewPurchaseOrderPdf.error, 'unableToOpenPdf')) : downloadPurchaseOrderPdf.error ? t(pdfMessageKey(downloadPurchaseOrderPdf.error, 'unableToDownloadPdf')) : undefined} viewingPdf={viewPurchaseOrderPdf.isPending} downloadingPdf={downloadPurchaseOrderPdf.isPending} onApprove={() => selectedOrder && transition.mutate({ path: `/api/purchase-orders/${selectedOrder.id}/approve` })} onReject={() => selectedOrder && transition.mutate({ path: `/api/purchase-orders/${selectedOrder.id}/reject`, body: { reason: rejectReason } })} onOrdered={() => selectedOrder && transition.mutate({ path: `/api/purchase-orders/${selectedOrder.id}/mark-ordered` })} onViewPdf={() => handleViewPurchaseOrderPdf(selectedOrder)} onDownloadPdf={() => handleDownloadPurchaseOrderPdf(selectedOrder)} /> : null}
-      {section === 'review' && mode === 'order' ? <ReceivingView order={selectedOrder} receivedNow={receivedNow} setReceivedNow={setReceivedNow} onReceive={() => selectedOrder && transition.mutate({ path: `/api/purchase-orders/${selectedOrder.id}/receive`, body: { lines: asArray(selectedOrder.lines).map((line) => ({ lineId: line.id, quantityReceivedNow: numberOrZero(receivedNow[line.id]), allowOverReceive: false })) } })} /> : null}
+      {section === 'review' && sections.includes('review') && mode === 'order' && submittedEditSessionId ? <OrderSessionAmountsEditView session={activePlan} quantities={submittedEditQuantities} setQuantities={(next) => { setSubmittedEditQuantities(next); setOrderUpdateError(undefined); }} saving={updateSubmittedOrderAmounts.isPending} errorMessage={orderUpdateError ? t(orderUpdateError) : undefined} onCancel={cancelEditSubmittedAmounts} onSave={() => activePlan && updateSubmittedOrderAmounts.mutate(activePlan)} /> : null}
+      {section === 'review' && sections.includes('review') && mode === 'order' && !submittedEditSessionId ? <OrderSessionReviewView session={activePlan} pdfState={{ metadata: orderPlanPdf.data, loading: orderPlanPdf.isLoading, unavailable: pdfUnavailable, errorMessage: pdfMetadataErrorMessage, actionErrorMessage: pdfActionErrorMessage, viewing: viewOrderPlanPdf.isPending, downloading: downloadOrderPlanPdf.isPending, onView: handleViewOrderPlanPdf, onDownload: handleDownloadOrderPlanPdf }} onEditAmounts={isBusinessPartner ? beginEditSubmittedAmounts : undefined} /> : null}
+      {section === 'review' && sections.includes('review') && mode !== 'order' ? <OrderReviewView order={selectedOrder} isBusinessPartner={isBusinessPartner} rejectReason={rejectReason} setRejectReason={setRejectReason} pdfActionErrorMessage={pdfPreflightError ? t(pdfPreflightError) : viewPurchaseOrderPdf.error ? t(pdfMessageKey(viewPurchaseOrderPdf.error, 'unableToOpenPdf')) : downloadPurchaseOrderPdf.error ? t(pdfMessageKey(downloadPurchaseOrderPdf.error, 'unableToDownloadPdf')) : undefined} viewingPdf={viewPurchaseOrderPdf.isPending} downloadingPdf={downloadPurchaseOrderPdf.isPending} onApprove={() => selectedOrder && transition.mutate({ path: `/api/purchase-orders/${selectedOrder.id}/approve` })} onReject={() => selectedOrder && transition.mutate({ path: `/api/purchase-orders/${selectedOrder.id}/reject`, body: { reason: rejectReason } })} onOrdered={() => selectedOrder && transition.mutate({ path: `/api/purchase-orders/${selectedOrder.id}/mark-ordered` })} onViewPdf={() => handleViewPurchaseOrderPdf(selectedOrder)} onDownloadPdf={() => handleDownloadPurchaseOrderPdf(selectedOrder)} /> : null}
       {section === 'receiving' && sections.includes('receiving') ? <ReceivingView order={selectedOrder} receivedNow={receivedNow} setReceivedNow={setReceivedNow} onReceive={() => selectedOrder && transition.mutate({ path: `/api/purchase-orders/${selectedOrder.id}/receive`, body: { lines: asArray(selectedOrder.lines).map((line) => ({ lineId: line.id, quantityReceivedNow: numberOrZero(receivedNow[line.id]), allowOverReceive: false })) } })} /> : null}
       {section === 'history' && sections.includes('history') && mode === 'inventory' ? <InventoryHistoryView counts={countList} message={inventoryMessage ? t(inventoryMessage) : undefined} exportError={inventoryPdfError ? t(inventoryPdfError) : undefined} exportingCountId={exportInventoryPdf.isPending ? exportInventoryPdf.variables?.count.id : undefined} onExportPdf={handleExportInventoryPdf} /> : null}
-      {section === 'history' && sections.includes('history') && mode !== 'inventory' ? <OrderHistoryView orders={orderList} onOpen={(order) => { setSelectedOrderId(order.id); setSection('review'); }} /> : null}
+      {section === 'history' && sections.includes('history') && mode === 'order' ? <OrderSessionHistoryView sessions={planList} viewingPdf={viewOrderPlanPdf.isPending ? viewOrderPlanPdf.variables?.orderPlanId : undefined} downloadingPdf={downloadOrderPlanPdf.isPending ? downloadOrderPlanPdf.variables?.orderPlanId : undefined} removingDraftId={removeOrderDraft.isPending ? removeOrderDraft.variables?.id : undefined} canEditSubmitted={isBusinessPartner} pdfErrorMessage={pdfActionErrorMessage} onStartNew={() => { setStartNewOrder(true); setSubmittedEditSessionId(undefined); loadedOrderSessionId.current = undefined; savedOrderQuantities.current = '{}'; setQuantities({}); setSection('vendors'); }} onOpen={(session) => { setStartNewOrder(false); setSubmittedEditSessionId(undefined); setSelectedOrderId(session.id); setSection(['DRAFT', 'IN_PROGRESS'].includes(session.status) ? 'vendors' : 'review'); }} onViewPdf={handleViewOrderPlanPdf} onDownloadPdf={handleDownloadOrderPlanPdf} onEditAmounts={beginEditSubmittedAmounts} onRemoveDraft={(session) => removeOrderDraft.mutate(session)} /> : null}
+      {section === 'history' && sections.includes('history') && mode === 'full' ? <OrderHistoryView orders={orderList} onOpen={(order) => { setSelectedOrderId(order.id); setSection('review'); }} /> : null}
       {section === 'catalog' && sections.includes('catalog') ? <CatalogManagementView products={productList} vendors={vendorList} isBusinessPartner={isBusinessPartner} /> : null}
       <ConfirmDialog
         visible={inventoryDialog?.type === 'leave'}
@@ -779,6 +985,45 @@ export function OrderingScreen({ mode = 'full' }: { mode?: OrderingMode }) {
           { label: t('cancel'), onPress: () => setDeleteOrderCatalogProduct(undefined), variant: 'secondary', disabled: deleteOrderCatalogItem.isPending }
         ] : []}
       />
+      <ConfirmDialog
+        visible={orderSubmitDialog?.type === 'success'}
+        title={t('orderSubmittedTitle')}
+        message={t('orderSubmittedMessage')}
+        onCancel={stayOnSubmittedOrder}
+        actions={[
+          { label: t('viewHistory'), onPress: viewSubmittedOrderHistory },
+          { label: t('stayOnOrder'), onPress: stayOnSubmittedOrder, variant: 'secondary' },
+          { label: t('backToProfile'), onPress: returnToProfile, variant: 'secondary' }
+        ]}
+      />
+      <ConfirmDialog
+        visible={orderSubmitDialog?.type === 'error'}
+        title={t('orderSubmitFailedTitle')}
+        message={orderSubmitDialog?.type === 'error' ? orderSubmitDialog.message : undefined}
+        onCancel={() => setOrderSubmitDialog(undefined)}
+        actions={[
+          { label: t('stayOnOrder'), onPress: () => setOrderSubmitDialog(undefined), variant: 'secondary' }
+        ]}
+      />
+      <ConfirmDialog
+        visible={orderUpdateDialog?.type === 'success'}
+        title={t('orderUpdatedTitle')}
+        message={t('orderUpdatedMessage')}
+        onCancel={stayOnUpdatedOrder}
+        actions={[
+          { label: t('stayOnOrder'), onPress: stayOnUpdatedOrder },
+          { label: t('viewHistory'), onPress: () => { setOrderUpdateDialog(undefined); refreshOrderHistory(); setSection('history'); }, variant: 'secondary' }
+        ]}
+      />
+      <ConfirmDialog
+        visible={orderUpdateDialog?.type === 'error'}
+        title={t('orderUpdateFailedTitle')}
+        message={orderUpdateDialog?.type === 'error' ? orderUpdateDialog.message : undefined}
+        onCancel={() => setOrderUpdateDialog(undefined)}
+        actions={[
+          { label: t('stayOnOrder'), onPress: () => setOrderUpdateDialog(undefined), variant: 'secondary' }
+        ]}
+      />
     </AppScreen>
   );
 }
@@ -802,4 +1047,21 @@ function pdfMessageKey(error: unknown, fallback: TranslationKey): TranslationKey
   if (code === 'AUTH_INVALID_TOKEN' || code === 'AUTH_INVALID_REFRESH_TOKEN' || code === 'AUTH_REQUIRED') return 'pdfSessionExpired';
   if (code === 'NETWORK_ERROR') return 'pdfNetworkError';
   return fallback;
+}
+
+function orderSubmitErrorMessage(error: unknown, t: (key: TranslationKey) => string) {
+  const code = error instanceof ApiError ? error.code : (error as { code?: string } | null)?.code;
+  if (code) return code;
+  if (error instanceof Error && error.message) return error.message;
+  return t('unableToSubmitOrder');
+}
+
+function logOrderSubmit(message: string, payload?: unknown) {
+  if (__DEV__) {
+    if (message === 'failed') {
+      console.error('[Order Submit] failed', payload);
+      return;
+    }
+    console.info(`[Order Submit] ${message}`, payload ?? '');
+  }
 }

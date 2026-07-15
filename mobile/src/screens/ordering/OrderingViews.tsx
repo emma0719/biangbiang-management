@@ -15,6 +15,7 @@ export const inventoryBusinesses: Array<{ code: InventoryBusiness; label: string
 ];
 export const orderBusinesses: Array<{ code: OrderBusiness; label: string }> = inventoryBusinesses;
 type DisplayPlanLine = {
+  id?: number;
   productId: number;
   vendorNameSnapshot: string;
   productNameSnapshot: string;
@@ -28,6 +29,7 @@ type DisplayPlanLine = {
   suggestedOrderQuantity?: number;
   finalOrderQuantity?: number;
 };
+type OrderSessionSort = 'newest' | 'oldest' | 'updated' | 'status';
 
 export function SectionNav({ active, setActive, sections, labels }: { active: OrderingSection; setActive: (section: OrderingSection) => void; sections?: OrderingSection[]; labels?: Partial<Record<OrderingSection, string>> }) {
   const { t } = useI18n();
@@ -176,8 +178,8 @@ export function OrderWorkflowView(props: { businessLabel: string; vendors: Vendo
         <LabelValue label={t('totalQuantity')} value={String(totalQuantity)} />
         {props.message ? <InlineMessage type="success" message={props.message} /> : null}
         {props.error ? <InlineMessage type="error" message={props.error} /> : null}
-        <PrimaryButton label={t('saveDraft')} onPress={props.onSave} disabled={disabled} />
-        <PrimaryButton label={t('submitForApproval')} onPress={props.onSubmit} disabled={disabled} />
+        <PrimaryButton label={props.saving ? t('loading') : t('saveDraft')} onPress={props.onSave} disabled={disabled} />
+        <PrimaryButton label={props.submitting ? t('submittingOrder') : t('submitOrder')} onPress={props.onSubmit} disabled={disabled} />
       </PaperCard>
     </>
   );
@@ -413,7 +415,7 @@ function InventoryProductRow({ product, value, setValue, commitValue, managingCa
   );
 }
 
-type OrderPlanPdfState = {
+export type OrderPlanPdfState = {
   metadata?: OrderPlanPdfMetadata;
   loading: boolean;
   unavailable: boolean;
@@ -472,36 +474,136 @@ export function OrderPlanView({ plans, counts, products, finalQuantities, setFin
   );
 }
 
+export function OrderSessionReviewView({ session, pdfState, onEditAmounts }: { session?: OrderPlan; pdfState?: OrderPlanPdfState; onEditAmounts?: (session: OrderPlan) => void }) {
+  const { t } = useI18n();
+  if (!session) return <EmptyState message={t('empty')} />;
+  return <>
+    <SectionBanner label={`${t('orderDetails')} · Session #${session.id}`} tone="burgundy" />
+    <PaperCard>
+      <LabelValue label="Session ID" value={String(session.id)} />
+      <LabelValue label="Status" value={session.status} />
+      <LabelValue label={t('submittedBy')} value={session.submittedByNameSnapshot ?? '-'} />
+      <LabelValue label="Submitted At" value={session.submittedAt ?? '-'} />
+      <LabelValue label={t('lastModifiedBy')} value={session.lastModifiedByNameSnapshot ?? '-'} />
+      <LabelValue label={t('lastUpdated')} value={session.updatedAt ?? '-'} />
+      <LabelValue label={t('items')} value={String(session.lines.filter((line) => Number(line.finalOrderQuantity ?? 0) > 0).length)} />
+      <LabelValue label={t('vendor')} value={vendorSummary(session)} />
+    </PaperCard>
+    <ApprovedPdfPanel state={pdfState} />
+    {session.lines.map((line) => (
+      <PaperCard key={line.id}>
+        <Text style={styles.cardTitle}>{line.vendorNameSnapshot} · {line.productNameSnapshot}</Text>
+        <LabelValue label={t('orderQuantity')} value={String(line.finalOrderQuantity ?? 0)} />
+        <LabelValue label={t('packageSpec')} value={[line.orderUnitSnapshot, line.packageSpecificationSnapshot].filter(Boolean).join(' · ') || t('empty')} />
+      </PaperCard>
+    ))}
+    {onEditAmounts && session.status === 'SUBMITTED' ? <PrimaryButton label={t('editOrderAmounts')} onPress={() => onEditAmounts(session)} /> : null}
+  </>;
+}
+
+export function OrderSessionAmountsEditView({ session, quantities, setQuantities, saving, errorMessage, onCancel, onSave }: { session?: OrderPlan; quantities: Quantities; setQuantities: (value: Quantities) => void; saving: boolean; errorMessage?: string; onCancel: () => void; onSave: () => void }) {
+  const { t } = useI18n();
+  if (!session) return <EmptyState message={t('empty')} />;
+  const vendors = Array.from(new Set(session.lines.map((line) => line.vendorNameSnapshot)));
+  return <>
+    <SectionBanner label={`${t('editOrderAmounts')} · Session #${session.id}`} tone="burgundy" />
+    <PaperCard>
+      <LabelValue label="Session ID" value={String(session.id)} />
+      <LabelValue label="Status" value={session.status} />
+      <LabelValue label={t('submittedBy')} value={session.submittedByNameSnapshot ?? '-'} />
+      <LabelValue label="Submitted At" value={session.submittedAt ?? '-'} />
+      {errorMessage ? <InlineMessage type="error" message={errorMessage} /> : null}
+    </PaperCard>
+    {vendors.map((vendor) => (
+      <View key={vendor}>
+        <SectionBanner label={vendor} tone="burgundy" />
+        {session.lines.filter((line) => line.vendorNameSnapshot === vendor).map((line) => (
+          <PaperCard key={line.id}>
+            <Text style={styles.cardTitle}>{line.productNameSnapshot}</Text>
+            <LabelValue label={t('originalSubmittedQuantity')} value={String(line.finalOrderQuantity ?? 0)} />
+            <LabelValue label={t('packageSpec')} value={[line.orderUnitSnapshot, line.packageSpecificationSnapshot].filter(Boolean).join(' · ') || t('empty')} />
+            <BrandTextInput label={t('orderQuantity')} value={quantities[line.id] ?? String(line.finalOrderQuantity ?? 0)} keyboardType="decimal-pad" onChangeText={(value) => setQuantities({ ...quantities, [line.id]: cleanQuantityInput(value) })} />
+          </PaperCard>
+        ))}
+      </View>
+    ))}
+    <PaperCard>
+      <SecondaryButton label={t('cancel')} onPress={onCancel} disabled={saving} />
+      <PrimaryButton label={saving ? t('savingChanges') : t('saveChanges')} onPress={onSave} disabled={saving || session.status !== 'SUBMITTED'} />
+    </PaperCard>
+  </>;
+}
+
+export function OrderSessionHistoryView({ sessions, viewingPdf, downloadingPdf, removingDraftId, canEditSubmitted, pdfErrorMessage, onStartNew, onOpen, onViewPdf, onDownloadPdf, onEditAmounts, onRemoveDraft }: { sessions: OrderPlan[]; viewingPdf?: number; downloadingPdf?: number; removingDraftId?: number; canEditSubmitted: boolean; pdfErrorMessage?: string; onStartNew: () => void; onOpen: (session: OrderPlan) => void; onViewPdf: (session: OrderPlan) => void; onDownloadPdf: (session: OrderPlan) => void; onEditAmounts: (session: OrderPlan) => void; onRemoveDraft: (session: OrderPlan) => void }) {
+  const { t } = useI18n();
+  const [sort, setSort] = useState<OrderSessionSort>('newest');
+  const drafts = sessions.filter((session) => ['DRAFT', 'IN_PROGRESS'].includes(session.status));
+  const history = sessions
+    .filter((session) => !['DRAFT', 'IN_PROGRESS', 'CANCELLED'].includes(session.status))
+    .sort((left, right) => compareOrderSessions(left, right, sort));
+  return <>
+    <SectionBanner label={t('orderHistory')} tone="green" />
+    {pdfErrorMessage ? <InlineMessage type="error" message={pdfErrorMessage} /> : null}
+    <PrimaryButton label={t('startNewOrder')} onPress={onStartNew} />
+    <PaperCard>
+      <Text style={styles.cardTitle}>{t('sort')}</Text>
+      <View style={styles.filterChips}>
+        <Chip label={t('newestFirst')} active={sort === 'newest'} onPress={() => setSort('newest')} />
+        <Chip label={t('oldestFirst')} active={sort === 'oldest'} onPress={() => setSort('oldest')} />
+        <Chip label={t('lastUpdatedSort')} active={sort === 'updated'} onPress={() => setSort('updated')} />
+        <Chip label={t('statusSort')} active={sort === 'status'} onPress={() => setSort('status')} />
+      </View>
+    </PaperCard>
+    {drafts.map((session) => <PaperCard key={`draft-${session.id}`}><Text style={styles.cardTitle}>{t('continueEditing')} · Session #{session.id}</Text><StatusBadge label={session.status} /><SecondaryButton label={t('continueEditing')} onPress={() => onOpen(session)} /><SecondaryButton label={removingDraftId === session.id ? t('loading') : t('removeDraft')} onPress={() => onRemoveDraft(session)} disabled={Boolean(removingDraftId)} /></PaperCard>)}
+    {history.length === 0 ? <EmptyState message={t('empty')} /> : history.map((session) => <PaperCard key={session.id}>
+      <Text style={styles.cardTitle}>Order Session #{session.id}</Text>
+      <LabelValue label="Store" value={session.locationCode} />
+      <LabelValue label={t('orderBusiness')} value={session.orderBusinessName ?? orderBusinessName(session.orderBusiness)} />
+      <LabelValue label={t('submittedBy')} value={session.submittedByNameSnapshot ?? '-'} />
+      <LabelValue label="Submitted At" value={session.submittedAt ?? '-'} />
+      <LabelValue label={t('lastModifiedBy')} value={session.lastModifiedByNameSnapshot ?? '-'} />
+      <LabelValue label={t('lastUpdated')} value={session.updatedAt ?? '-'} />
+      <LabelValue label="Status" value={session.status} />
+      <LabelValue label={t('items')} value={String(session.lines.filter((line) => Number(line.finalOrderQuantity ?? 0) > 0).length)} />
+      <LabelValue label={t('vendor')} value={vendorSummary(session)} />
+      <SecondaryButton label={t('viewSession')} onPress={() => onOpen(session)} />
+      <SecondaryButton label={viewingPdf === session.id ? t('loading') : t('viewPdf')} onPress={() => onViewPdf(session)} disabled={Boolean(viewingPdf)} />
+      <SecondaryButton label={downloadingPdf === session.id ? t('loading') : t('downloadPdf')} onPress={() => onDownloadPdf(session)} disabled={Boolean(downloadingPdf)} />
+      {canEditSubmitted && session.status === 'SUBMITTED' ? <SecondaryButton label={t('editOrderAmounts')} onPress={() => onEditAmounts(session)} /> : null}
+    </PaperCard>)}
+  </>;
+}
+
 function ApprovedPdfPanel({ state }: { state?: OrderPlanPdfState }) {
   const { t } = useI18n();
   if (!state) {
     return (
       <PaperCard>
-        <Text style={styles.cardTitle}>{t('approvedPdf')}</Text>
-        <LabelValue label={t('approvedPdf')} value={t('pdfNotAvailable')} />
+        <Text style={styles.cardTitle}>{t('sessionPdf')}</Text>
+        <LabelValue label={t('sessionPdf')} value={t('pdfNotAvailable')} />
       </PaperCard>
     );
   }
   if (state.loading) {
     return (
       <PaperCard>
-        <Text style={styles.cardTitle}>{t('approvedPdf')}</Text>
-        <LabelValue label={t('approvedPdf')} value={t('loading')} />
+        <Text style={styles.cardTitle}>{t('sessionPdf')}</Text>
+        <LabelValue label={t('sessionPdf')} value={t('loading')} />
       </PaperCard>
     );
   }
   if (state.unavailable) {
     return (
       <PaperCard>
-        <Text style={styles.cardTitle}>{t('approvedPdf')}</Text>
-        <LabelValue label={t('approvedPdf')} value={t('pdfNotAvailable')} />
+        <Text style={styles.cardTitle}>{t('sessionPdf')}</Text>
+        <LabelValue label={t('sessionPdf')} value={t('pdfNotAvailable')} />
       </PaperCard>
     );
   }
   if (state.errorMessage) {
     return (
       <PaperCard tone="danger">
-        <Text style={styles.cardTitle}>{t('approvedPdf')}</Text>
+        <Text style={styles.cardTitle}>{t('sessionPdf')}</Text>
         <Text accessibilityRole="alert" style={styles.errorText}>{state.errorMessage}</Text>
       </PaperCard>
     );
@@ -509,7 +611,7 @@ function ApprovedPdfPanel({ state }: { state?: OrderPlanPdfState }) {
   if (!state.metadata) return null;
   return (
     <PaperCard>
-      <Text style={styles.cardTitle}>{t('approvedPdf')}</Text>
+      <Text style={styles.cardTitle}>{t('sessionPdf')}</Text>
       <LabelValue label={t('filename')} value={state.metadata.filename} />
       <LabelValue label={t('version')} value={String(state.metadata.version)} />
       <LabelValue label={t('generatedBy')} value={state.metadata.generatedByNameSnapshot} />
@@ -707,6 +809,46 @@ function latestInventoryForProduct(product: OrderProduct, reference?: OrderInven
   if (!line) return '—';
   const quantity = line.quantity == null ? '0' : String(line.quantity);
   return [quantity, line.unit].filter(Boolean).join(' ');
+}
+
+function vendorSummary(session: OrderPlan) {
+  const vendors = Array.from(new Set(session.lines.filter((line) => Number(line.finalOrderQuantity ?? 0) > 0).map((line) => line.vendorNameSnapshot).filter(Boolean)));
+  if (vendors.length === 0) return '-';
+  if (vendors.length <= 3) return vendors.join(', ');
+  return `${vendors.slice(0, 3).join(', ')} +${vendors.length - 3}`;
+}
+
+function compareOrderSessions(left: OrderPlan, right: OrderPlan, sort: OrderSessionSort): number {
+  if (sort === 'oldest') {
+    const comparison = orderSessionSubmittedTime(left).localeCompare(orderSessionSubmittedTime(right));
+    return comparison !== 0 ? comparison : left.id - right.id;
+  }
+  if (sort === 'updated') {
+    const comparison = orderSessionUpdatedTime(right).localeCompare(orderSessionUpdatedTime(left));
+    return comparison !== 0 ? comparison : right.id - left.id;
+  }
+  if (sort === 'status') {
+    const comparison = orderSessionStatusRank(left.status) - orderSessionStatusRank(right.status);
+    return comparison !== 0 ? comparison : compareOrderSessions(left, right, 'newest');
+  }
+  const comparison = orderSessionSubmittedTime(right).localeCompare(orderSessionSubmittedTime(left));
+  return comparison !== 0 ? comparison : right.id - left.id;
+}
+
+function orderSessionSubmittedTime(session: OrderPlan) {
+  return session.submittedAt ?? session.updatedAt ?? session.businessDate ?? '';
+}
+
+function orderSessionUpdatedTime(session: OrderPlan) {
+  return session.updatedAt ?? session.submittedAt ?? session.businessDate ?? '';
+}
+
+function orderSessionStatusRank(status: string) {
+  if (status === 'DRAFT' || status === 'IN_PROGRESS') return 0;
+  if (status === 'SUBMITTED') return 1;
+  if (status === 'APPROVED') return 2;
+  if (status === 'RETURNED' || status === 'REJECTED') return 3;
+  return 4;
 }
 
 function normalizeReferenceName(value: string) {

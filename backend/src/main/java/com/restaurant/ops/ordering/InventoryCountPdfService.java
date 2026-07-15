@@ -24,7 +24,25 @@ public class InventoryCountPdfService {
   private static final int ROWS_PER_PAGE = 22;
 
   byte[] generate(InventoryCountSession session, List<InventoryCountLine> inventoryLines) {
-    return renderPdf(pages(session, stableLines(inventoryLines), Instant.now()));
+    PdfHeader header = new PdfHeader("Inventory Count", session.getId(), date(session), session.getLocationCode().name(), session.getInventoryBusiness().displayName(), "Counted by", countedBy(session), session.getStatus().name());
+    return renderPdf(pages(header, tableRows(stableLines(inventoryLines)), Instant.now(), "No submitted inventory lines"));
+  }
+
+  byte[] generateOrder(OrderPlanSession session, List<OrderPlanLine> lines) {
+    PdfHeader header = new PdfHeader("Order", session.getId(), orderDate(session), session.getLocationCode().name(), session.getOrderBusiness().displayName(), "Submitted By", submittedBy(session), session.getStatus().name());
+    List<TableRow> rows = new ArrayList<>();
+    String currentVendor = null;
+    for (OrderPlanLine line : lines.stream()
+        .filter(value -> value.getFinalOrderQuantity() != null && value.getFinalOrderQuantity().compareTo(BigDecimal.ZERO) > 0)
+        .toList()) {
+      String vendor = blank(line.getVendorNameSnapshot());
+      if (!vendor.equals(currentVendor)) {
+        currentVendor = vendor;
+        rows.add(TableRow.vendor(vendor));
+      }
+      rows.add(TableRow.item(vendor, blank(line.getProductNameSnapshot()), decimal(line.getFinalOrderQuantity()), line.getOrderUnitSnapshot() == null ? "" : line.getOrderUnitSnapshot().name()));
+    }
+    return renderPdf(pages(header, rows, Instant.now(), "No submitted order lines"));
   }
 
   private List<InventoryCountLine> stableLines(List<InventoryCountLine> inventoryLines) {
@@ -35,15 +53,14 @@ public class InventoryCountPdfService {
         .toList();
   }
 
-  private List<PageModel> pages(InventoryCountSession session, List<InventoryCountLine> inventoryLines, Instant generatedAt) {
-    List<TableRow> rows = tableRows(inventoryLines);
+  private List<PageModel> pages(PdfHeader header, List<TableRow> rows, Instant generatedAt, String emptyMessage) {
     List<PageModel> pages = new ArrayList<>();
     if (rows.isEmpty()) {
-      pages.add(new PageModel(session, generatedAt, List.of(TableRow.item("", "No submitted inventory lines", "", ""))));
+      pages.add(new PageModel(header, generatedAt, List.of(TableRow.item("", emptyMessage, "", ""))));
       return pages;
     }
     for (int index = 0; index < rows.size(); index += ROWS_PER_PAGE) {
-      pages.add(new PageModel(session, generatedAt, rows.subList(index, Math.min(index + ROWS_PER_PAGE, rows.size()))));
+      pages.add(new PageModel(header, generatedAt, rows.subList(index, Math.min(index + ROWS_PER_PAGE, rows.size()))));
     }
     return pages;
   }
@@ -98,29 +115,29 @@ public class InventoryCountPdfService {
 
   private byte[] stream(PageModel page, int pageNumber, int totalPages) {
     StringBuilder stream = new StringBuilder();
-    drawHeader(stream, page.session(), page.generatedAt());
+    drawHeader(stream, page.header());
     drawTable(stream, page.rows());
     text(stream, "F1", 8, MARGIN, FOOTER_Y, "Generated: " + STAMP.format(page.generatedAt()));
     text(stream, "F1", 8, 356, FOOTER_Y, "Page " + pageNumber + " of " + totalPages);
-    text(stream, "F1", 8, 584, FOOTER_Y, "Inventory Count " + (page.session().getId() == null ? "" : page.session().getId()));
+    text(stream, "F1", 8, 560, FOOTER_Y, page.header().title() + " Session ID " + (page.header().sessionId() == null ? "" : page.header().sessionId()));
     byte[] streamBytes = stream.toString().getBytes(StandardCharsets.ISO_8859_1);
     return ("<< /Length " + streamBytes.length + " >>\nstream\n" + new String(streamBytes, StandardCharsets.ISO_8859_1) + "endstream").getBytes(StandardCharsets.ISO_8859_1);
   }
 
-  private void drawHeader(StringBuilder stream, InventoryCountSession session, Instant generatedAt) {
-    text(stream, "F2", 20, MARGIN, 566, "Inventory Count");
+  private void drawHeader(StringBuilder stream, PdfHeader header) {
+    text(stream, "F2", 20, MARGIN, 566, header.title());
     text(stream, "F1", 9, MARGIN, 544, "Biangbiang Restaurant Operations");
     line(stream, MARGIN, 536, PAGE_WIDTH - MARGIN, 536);
     text(stream, "F2", 9, MARGIN, 516, "Date:");
-    text(stream, "F1", 9, MARGIN + 34, 516, date(session));
+    text(stream, "F1", 9, MARGIN + 34, 516, header.date());
     text(stream, "F2", 9, 258, 516, "Location:");
-    text(stream, "F1", 9, 310, 516, session.getLocationCode().name());
+    text(stream, "F1", 9, 310, 516, header.location());
     text(stream, "F2", 9, 420, 516, "Business:");
-    text(stream, "F1", 9, 478, 516, truncate(session.getInventoryBusiness().displayName(), 24));
-    text(stream, "F2", 9, MARGIN, 500, "Counted by:");
-    text(stream, "F1", 9, MARGIN + 72, 500, truncate(countedBy(session), 32));
+    text(stream, "F1", 9, 478, 516, truncate(header.business(), 24));
+    text(stream, "F2", 9, MARGIN, 500, header.actorLabel() + ":");
+    text(stream, "F1", 9, MARGIN + 82, 500, truncate(header.actor(), 32));
     text(stream, "F2", 9, 258, 500, "Status:");
-    text(stream, "F1", 9, 306, 500, session.getStatus().name());
+    text(stream, "F1", 9, 306, 500, header.status());
   }
 
   private void drawTable(StringBuilder stream, List<TableRow> rows) {
@@ -133,7 +150,7 @@ public class InventoryCountPdfService {
     rect(stream, tableLeft, TABLE_TOP, tableWidth, ROW_HEIGHT);
     text(stream, "F2", 9, x[0] + 6, TABLE_TOP + 7, "Vendor");
     text(stream, "F2", 9, x[1] + 6, TABLE_TOP + 7, "ITEM");
-    text(stream, "F2", 9, x[2] + 6, TABLE_TOP + 7, "Qt.");
+    text(stream, "F2", 9, x[2] + 6, TABLE_TOP + 7, "Qty.");
     text(stream, "F2", 9, x[3] + 6, TABLE_TOP + 7, "Unit");
     for (double columnX : x) {
       line(stream, columnX, TABLE_TOP, columnX, TABLE_TOP + ROW_HEIGHT);
@@ -208,6 +225,15 @@ public class InventoryCountPdfService {
     return "Unknown employee";
   }
 
+  private String orderDate(OrderPlanSession session) {
+    return session.getSubmittedAt() == null ? session.getBusinessDate().toString() : STAMP.format(session.getSubmittedAt());
+  }
+
+  private String submittedBy(OrderPlanSession session) {
+    if (session.getSubmittedByNameSnapshot() != null && !session.getSubmittedByNameSnapshot().isBlank()) return session.getSubmittedByNameSnapshot();
+    return session.getCreatedBy() == null ? "Unknown employee" : session.getCreatedBy().getDisplayName();
+  }
+
   private void write(ByteArrayOutputStream out, String value) {
     out.writeBytes(value.getBytes(StandardCharsets.ISO_8859_1));
   }
@@ -237,7 +263,9 @@ public class InventoryCountPdfService {
     return value == null ? "" : value.stripTrailingZeros().toPlainString();
   }
 
-  private record PageModel(InventoryCountSession session, Instant generatedAt, List<TableRow> rows) {}
+  private record PdfHeader(String title, Long sessionId, String date, String location, String business, String actorLabel, String actor, String status) {}
+
+  private record PageModel(PdfHeader header, Instant generatedAt, List<TableRow> rows) {}
 
   private record TableRow(boolean vendorHeader, String vendor, String item, String quantity, String unit) {
     static TableRow vendor(String vendor) {

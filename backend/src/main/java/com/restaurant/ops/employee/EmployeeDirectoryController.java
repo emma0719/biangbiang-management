@@ -23,7 +23,10 @@ public class EmployeeDirectoryController {
 
   @GetMapping
   List<ProfileDtos.EmployeePublicResponse> listPublicEmployees() {
-    return employees.findAll().stream().map(profileService::publicResponse).toList();
+    return employees.findAll().stream()
+        .filter(employee -> employee.getStatus() == EmployeeStatus.ACTIVE)
+        .map(profileService::publicResponse)
+        .toList();
   }
 
   @GetMapping("/{id}")

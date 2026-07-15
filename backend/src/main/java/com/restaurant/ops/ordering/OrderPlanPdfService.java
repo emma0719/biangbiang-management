@@ -18,17 +18,22 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class OrderPlanPdfService {
+  private final InventoryCountPdfService inventoryPdf;
+
+  OrderPlanPdfService(InventoryCountPdfService inventoryPdf) {
+    this.inventoryPdf = inventoryPdf;
+  }
   private static final DateTimeFormatter STAMP = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneId.of("UTC"));
   private static final int MAX_LINE_CHARS = 104;
   private static final int LINES_PER_PAGE = 54;
 
   OrderPlanPdfDocument generate(OrderPlanSession plan, List<OrderPlanLine> lines, Employee approver, int version) {
     Instant generatedAt = Instant.now();
-    byte[] content = renderPdf(lines(plan, stableLines(lines), version, generatedAt));
+    byte[] content = inventoryPdf.generateOrder(plan, lines);
     OrderPlanPdfDocument document = new OrderPlanPdfDocument();
     document.setOrderPlan(plan);
     document.setVersionNumber(version);
-    document.setFilename("order-plan-" + plan.getId() + "-v" + version + ".pdf");
+    document.setFilename("order-session-" + plan.getId() + "-v" + version + ".pdf");
     document.setMimeType("application/pdf");
     document.setGeneratedAt(generatedAt);
     document.setGeneratedBy(approver);
