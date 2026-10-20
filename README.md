@@ -42,7 +42,7 @@ The inventory entry screen offers business selection for BiangBiang Front and Pa
 
 ### 4. Order planning
 
-The order screens show business selection, products grouped by vendor, latest inventory values, quantity controls, and draft / submit actions. One capture displays `Latest inventory imported for reference`. Visible controls do not establish that draft saving, leaving and resuming an order, or submission succeeds.
+The order screens show business selection, products grouped by vendor, latest inventory values, quantity controls, and draft / submit actions. One capture displays `Latest inventory imported for reference`. The later capture below shows an `Order Submitted` success confirmation. Draft saving and leaving and resuming an order have not been independently verified.
 
 | Select a business | Inventory reference and quantities |
 | --- | --- |
@@ -52,4 +52,10 @@ The order screens show business selection, products grouped by vendor, latest in
 | --- | --- |
 | <img src="docs/screenshots/order-draft-and-submit-controls.png" alt="Inventory reference import message with Save Draft and Submit Order controls" width="280"> | <img src="docs/screenshots/order-submission-failed.png" alt="Order Submission Failed dialog reporting ORDER_SESSION_HAS_NO_LINES" width="280"> |
 
-**Development issue observed:** the failure capture reports `ORDER_SESSION_HAS_NO_LINES` with zero items and zero total quantity. It documents a failed attempt, not a successful order submission. The cause and any subsequent fix have not been verified as part of this documentation update.
+**Earlier failed attempt:** the failure capture reports `ORDER_SESSION_HAS_NO_LINES` with zero items and zero total quantity. It records an empty-order submission failure; the later success capture does not establish that this error condition was fixed or required a fix.
+
+**Submission success confirmation:** the later screenshot shows `Order Submitted` with a successful-submission message, a total quantity of 1, and navigation actions for history, the current order, and the profile. This documents the success UI for that attempt. Order-history retrieval and PDF export are mentioned in the dialog but are not demonstrated by this screenshot and remain unverified.
+
+<p>
+  <img src="docs/screenshots/order-submission-success.png" alt="Order Submitted success confirmation with View History, Stay on Order, and Back to Profile actions" width="280">
+</p>
