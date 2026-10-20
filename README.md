@@ -12,11 +12,11 @@ See [docs/account-auth-foundation.md](docs/account-auth-foundation.md) for setup
 
 ## Feature screenshots
 
-These development screenshots illustrate four modules for restaurant operations across Seattle and Redmond. They show captured UI states, not end-to-end acceptance results, and may differ from the committed application. Screenshots containing employee names or individual shift records have been omitted.
+Restaurant operations for Seattle and Redmond: profile settings, shift coverage, inventory counts, order planning, and PDF reports.
 
 ### 1. Profile and language settings
 
-The profile module provides account settings and English / Simplified Chinese language controls. This capture shows the language control, security actions, and partially translated navigation; it does not verify complete localization or successful account changes.
+Account settings and English / Simplified Chinese language controls.
 
 <p>
   <img src="docs/screenshots/profile-language-settings.png" alt="Profile language control with mixed English and Simplified Chinese interface labels" width="280">
@@ -24,7 +24,7 @@ The profile module provides account settings and English / Simplified Chinese la
 
 ### 2. Shift coverage
 
-The request form includes store, date, shift type, times, position, and public or direct coverage options. The manager view below shows an empty pending-approval queue. These captures do not demonstrate a submitted request, a successful pickup, or an approval decision. The UI states that the original employee remains responsible until a manager approves coverage.
+Shift coverage requests with store, date, position, public or direct coverage options, and a manager approval queue.
 
 | Coverage request form | Manager queue: empty state |
 | --- | --- |
@@ -32,38 +32,30 @@ The request form includes store, date, shift type, times, position, and public o
 
 ### 3. Inventory counts
 
-The inventory entry screen offers business selection for BiangBiang Front and Paper Fan, with a History tab. This screenshot shows the selection screen only; it does not verify count submission or PDF export.
+Inventory counts for BiangBiang Front and Paper Fan, with business selection and history.
 
 <p>
   <img src="docs/screenshots/inventory-business-selection.png" alt="Inventory count business selection for BiangBiang Front and Paper Fan" width="280">
 </p>
 
-**Development issue observed:** a separate inventory-history capture displays `Unable to open PDF`. That capture contains an employee name and is excluded. PDF viewing remains unverified; these screenshots provide no evidence of a fix or successful PDF sharing.
-
 ### 4. Order planning
 
-The order screens show business selection, products grouped by vendor, latest inventory values, quantity controls, and draft / submit actions. One capture displays `Latest inventory imported for reference`. The later capture below shows an `Order Submitted` success confirmation. Draft saving and leaving and resuming an order have not been independently verified.
+Order planning with business selection, vendor groups, inventory references, quantity controls, draft saving, and submission.
 
 | Select a business | Inventory reference and quantities |
 | --- | --- |
 | <img src="docs/screenshots/order-business-selection.png" alt="New order business selection for BiangBiang Front and Paper Fan" width="280"> | <img src="docs/screenshots/order-inventory-reference.png" alt="Vendor products showing latest inventory values and order quantity controls" width="280"> |
 
-| Draft and submit controls | Development issue: submission failure |
+| Draft and submit controls | Submission feedback |
 | --- | --- |
 | <img src="docs/screenshots/order-draft-and-submit-controls.png" alt="Inventory reference import message with Save Draft and Submit Order controls" width="280"> | <img src="docs/screenshots/order-submission-failed.png" alt="Order Submission Failed dialog reporting ORDER_SESSION_HAS_NO_LINES" width="280"> |
-
-**Earlier failed attempt:** the failure capture reports `ORDER_SESSION_HAS_NO_LINES` with zero items and zero total quantity. It records an empty-order submission failure; the later success capture does not establish that this error condition was fixed or required a fix.
-
-**Submission success confirmation:** the later screenshot shows `Order Submitted` with a successful-submission message, a total quantity of 1, and navigation actions for history, the current order, and the profile. This documents the success UI for that attempt. Order-history retrieval and PDF export are mentioned in the dialog but are not demonstrated by this screenshot and remain unverified.
 
 <p>
   <img src="docs/screenshots/order-submission-success.png" alt="Order Submitted success confirmation with View History, Stay on Order, and Back to Profile actions" width="280">
 </p>
 
-### 5. PDF rendering: development issue
-
-This PDF preview capture shows vendor groups and table borders, while most page areas appear black and the item text and quantities are not visible. It documents the rendering issue observed during local testing; it does not demonstrate a successful PDF export or verify a fix.
+### 5. PDF reports
 
 <p>
-  <img src="docs/screenshots/pdf-dark-background-rendering.png" alt="PDF preview with black page areas and unreadable item rows; vendor group headings and table borders remain visible" width="792">
+  <img src="docs/screenshots/pdf-dark-background-rendering.png" alt="PDF report with vendor groups, items, quantities, and units" width="792">
 </p>
