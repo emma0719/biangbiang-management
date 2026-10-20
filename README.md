@@ -59,3 +59,11 @@ The order screens show business selection, products grouped by vendor, latest in
 <p>
   <img src="docs/screenshots/order-submission-success.png" alt="Order Submitted success confirmation with View History, Stay on Order, and Back to Profile actions" width="280">
 </p>
+
+### 5. PDF rendering: development issue
+
+This PDF preview capture shows vendor groups and table borders, while most page areas appear black and the item text and quantities are not visible. It documents the rendering issue observed during local testing; it does not demonstrate a successful PDF export or verify a fix.
+
+<p>
+  <img src="docs/screenshots/pdf-dark-background-rendering.png" alt="PDF preview with black page areas and unreadable item rows; vendor group headings and table borders remain visible" width="792">
+</p>
